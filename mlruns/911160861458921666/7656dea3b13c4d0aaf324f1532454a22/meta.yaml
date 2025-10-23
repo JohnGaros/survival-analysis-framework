@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/johngaros/Documents/Wemetrix/V326/survival/survival_framework_v1/mlruns/911160861458921666/7656dea3b13c4d0aaf324f1532454a22/artifacts
+end_time: 1761228177533
+entry_point_name: ''
+experiment_id: '911160861458921666'
+lifecycle_stage: active
+run_id: 7656dea3b13c4d0aaf324f1532454a22
+run_name: survival_framework_run
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1761228176544
+status: 4
+tags: []
+user_id: johngaros

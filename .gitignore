@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Generated artifacts
+src/artifacts/
+src/models/
+src/mlruns/
+
+# Test outputs
+data/test_outputs/*
+!data/test_outputs/README.md
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Data (keep structure but ignore large files in data/)
+# To track sample data, use: git add -f data/sample/*.csv
+data/*
+!data/sample/
+!data/sample/.gitkeep
+!data/README.md
+!data/test_outputs/
+!data/test_outputs/README.md
+!data/predictions/
+!data/predictions/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Office temp files
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+# Logs
+*.log
