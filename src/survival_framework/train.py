@@ -1,8 +1,10 @@
 from __future__ import annotations
 import os
 import joblib
+from joblib import Parallel, delayed
 import pandas as pd
 import numpy as np
+from typing import Optional
 
 from survival_framework.data import (
     split_X_y,
@@ -13,6 +15,7 @@ from survival_framework.data import (
     load_data,
     RunType,
 )
+from survival_framework.config import ExecutionConfig, ExecutionMode
 from survival_framework.models import (
     CoxPHWrapper,
     CoxnetWrapper,
@@ -85,13 +88,61 @@ def build_models():
     }
 
 
-def train_all_models(file_path: str, run_type: RunType = "sample"):
+def _train_single_fold(
+    model_name: str,
+    pipeline,
+    X: pd.DataFrame,
+    y: np.ndarray,
+    fold_idx: int,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    times: np.ndarray,
+    fold_dir: str
+) -> dict:
+    """Train and evaluate a single fold (helper for parallel execution).
+
+    Args:
+        model_name: Name of the model being trained
+        pipeline: sklearn Pipeline with preprocessor and model
+        X: Full feature matrix
+        y: Full structured survival array
+        fold_idx: Fold index (0-based)
+        train_idx: Indices for training set
+        test_idx: Indices for test set
+        times: Time grid for evaluation
+        fold_dir: Directory to save fold predictions
+
+    Returns:
+        Dictionary with evaluation metrics (cindex, ibs, auc_mean, etc.)
+    """
+    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    y_train, y_test = y[train_idx], y[test_idx]
+
+    res = evaluate_model(
+        model_name=model_name,
+        pipeline=pipeline,
+        X_train=X_train,
+        y_train=y_train,
+        X_test=X_test,
+        y_test=y_test,
+        times=times,
+        outdir=fold_dir,
+        fold_idx=fold_idx,
+    )
+    return res
+
+
+def train_all_models(
+    file_path: str,
+    run_type: RunType = "sample",
+    execution_config: Optional[ExecutionConfig] = None
+):
     """Train and evaluate all survival models with cross-validation.
 
     Complete training pipeline that:
     1. Loads data from CSV or pickle file
     2. Checks proportional hazards assumptions
-    3. Trains all models with 5-fold cross-validation
+    3. Trains all models with 5-fold cross-validation (sequential or parallel)
     4. Computes survival metrics (C-index, IBS, time-dependent AUC)
     5. Saves per-fold predictions and final models
     6. Logs all results to MLflow
@@ -102,6 +153,8 @@ def train_all_models(file_path: str, run_type: RunType = "sample"):
             required columns (NUM_COLS, CAT_COLS, ID_COL, TIME_COL, EVENT_COL)
         run_type: Type of run - "sample" for development, "production" for full data.
             Determines output directory structure and file naming.
+        execution_config: Configuration for execution mode and parallelization.
+            If None, defaults to pandas mode (sequential, backward compatible).
 
     Side Effects:
         - Creates data/outputs/{run_type}/artifacts/ with PH flags, predictions, metrics
@@ -121,6 +174,10 @@ def train_all_models(file_path: str, run_type: RunType = "sample"):
         Loading pickle data from data/inputs/production/data.pkl (run_type=production)
         ...
     """
+    # Default to pandas mode if no config provided (backward compatible)
+    if execution_config is None:
+        execution_config = ExecutionConfig(mode=ExecutionMode.PANDAS, n_jobs=1)
+
     # Get output paths for this run type
     paths = get_output_paths(run_type)
 
@@ -150,34 +207,70 @@ def train_all_models(file_path: str, run_type: RunType = "sample"):
     run_name = f"survival_framework_{run_type}"
 
     with start_run(run_name=run_name):
-        # Log run type as parameter
-        log_params({"run_type": run_type, "input_file": file_path, "n_samples": len(df)})
+        # Log run type and execution config
+        log_params({
+            "run_type": run_type,
+            "input_file": file_path,
+            "n_samples": len(df),
+            "execution_mode": execution_config.mode.value,
+            "n_jobs": execution_config.n_jobs
+        })
         log_artifact(ph_flags_path)
 
         for name, model in models.items():
-            print(f"\n=== Training {name} ({run_type}) ===")
+            print(f"\n=== Training {name} ({run_type}, {execution_config.mode.value}, n_jobs={execution_config.n_jobs}) ===")
             pipe = make_pipeline(pre, model)
 
             fold_dir = os.path.join(paths["artifacts"], f"{name}")
             ensure_dir(fold_dir)
 
-            for fold_idx, (tr, te) in enumerate(splits):
-                X_train, X_test = X.iloc[tr], X.iloc[te]
-                y_train, y_test = y[tr], y[te]
+            # Convert splits to list for parallel execution
+            splits_list = list(splits)
 
-                res = evaluate_model(
-                    model_name=name,
-                    pipeline=pipe,
-                    X_train=X_train,
-                    y_train=y_train,
-                    X_test=X_test,
-                    y_test=y_test,
-                    times=times,
-                    outdir=fold_dir,
-                    fold_idx=fold_idx,
+            # Decide execution strategy
+            if execution_config.is_parallel():
+                # Parallel execution using joblib
+                print(f"  → Parallel CV with {execution_config.n_jobs} jobs")
+                fold_results = Parallel(
+                    n_jobs=execution_config.n_jobs,
+                    verbose=execution_config.verbose,
+                    backend=execution_config.backend
+                )(
+                    delayed(_train_single_fold)(
+                        model_name=name,
+                        pipeline=pipe,
+                        X=X,
+                        y=y,
+                        fold_idx=fold_idx,
+                        train_idx=tr,
+                        test_idx=te,
+                        times=times,
+                        fold_dir=fold_dir
+                    )
+                    for fold_idx, (tr, te) in enumerate(splits_list)
                 )
-                rows.append(res)
-                log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
+
+                # Collect results and log metrics
+                for fold_idx, res in enumerate(fold_results):
+                    rows.append(res)
+                    log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
+            else:
+                # Sequential execution (original behavior)
+                print(f"  → Sequential CV")
+                for fold_idx, (tr, te) in enumerate(splits_list):
+                    res = _train_single_fold(
+                        model_name=name,
+                        pipeline=pipe,
+                        X=X,
+                        y=y,
+                        fold_idx=fold_idx,
+                        train_idx=tr,
+                        test_idx=te,
+                        times=times,
+                        fold_dir=fold_dir
+                    )
+                    rows.append(res)
+                    log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
 
             # Save fitted final model on full data
             pipe.fit(X, y)
