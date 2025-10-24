@@ -86,3 +86,6 @@ RUN_TYPE_IMPLEMENTATION_COMPLETE.md
 PRODUCTION_BENCHMARK_PRELIMINARY.md
 src/PRODUCTION_DATA_FIXES.md
 src/PYSPARK_INTEGRATION_PLAN.md
+
+# Legacy scripts (superseded by src/main.py)
+cox_survival_v9.py
