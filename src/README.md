@@ -87,28 +87,20 @@ src/
 ├── configs/                         # Configuration files
 │   ├── sample.json                  # Sample data config
 │   └── production.json              # Production-optimized config
-├── survival_framework/              # Main package
-│   ├── __init__.py
-│   ├── config.py                    # Configuration system
-│   ├── data.py                      # Data loading & preprocessing
-│   ├── models.py                    # Model wrappers
-│   ├── train.py                     # Training orchestration
-│   ├── validation.py                # Cross-validation
-│   ├── metrics.py                   # Survival metrics
-│   ├── utils.py                     # Utilities
-│   ├── tracking.py                  # MLflow integration
-│   └── predict.py                   # Prediction generation
-├── artifacts/                       # Generated artifacts (gitignored)
-│   ├── ph_flags.csv                 # Proportional hazards tests
-│   ├── model_metrics.csv            # Per-fold CV metrics
-│   ├── model_summary.csv            # Aggregated rankings
-│   └── <model>/                     # Per-model predictions
-│       ├── <model>_fold0_surv.npy   # Survival functions
-│       └── <model>_fold0_risk.npy   # Risk scores
-├── models/                          # Saved models (gitignored)
-│   └── <model>_YYYYMMDD_HHMMSS.joblib
-└── mlruns/                          # MLflow tracking (gitignored)
+└── survival_framework/              # Main package
+    ├── __init__.py
+    ├── config.py                    # Configuration system
+    ├── data.py                      # Data loading & preprocessing
+    ├── models.py                    # Model wrappers
+    ├── train.py                     # Training orchestration
+    ├── validation.py                # Cross-validation
+    ├── metrics.py                   # Survival metrics
+    ├── utils.py                     # Utilities
+    ├── tracking.py                  # MLflow integration
+    └── predict.py                   # Prediction generation
 ```
+
+**Note**: All generated outputs (models, artifacts, MLflow tracking) are saved to `data/outputs/{run_type}/` to maintain separation between sample and production runs. See [Output Organization](#output-organization) below.
 
 ## Usage
 
@@ -244,9 +236,40 @@ pytest --cov=survival_framework --cov-report=html
 pytest tests/test_data.py
 ```
 
+## Output Organization
+
+All training outputs are organized by run type under `data/outputs/{run_type}/`:
+
+```
+data/outputs/
+├── sample/                          # Sample run outputs
+│   ├── models/                      # Saved model files
+│   │   └── <model>_YYYYMMDD_HHMMSS.joblib
+│   ├── artifacts/                   # Training artifacts
+│   │   ├── ph_flags.csv             # Proportional hazards tests
+│   │   ├── model_metrics.csv        # Per-fold CV metrics
+│   │   ├── model_summary.csv        # Aggregated rankings
+│   │   └── <model>/                 # Per-model predictions
+│   │       ├── <model>_fold0_surv.npy
+│   │       └── <model>_fold0_risk.npy
+│   ├── predictions/                 # Generated predictions
+│   │   └── predictions_YYYYMMDD_HHMMSS.csv
+│   └── mlruns/                      # MLflow tracking
+└── production/                      # Production run outputs
+    └── (same structure as sample/)
+```
+
+**Benefits of this organization:**
+- ✅ Separates development and production outputs
+- ✅ Prevents accidental mixing of results
+- ✅ Easy to clean up sample runs without affecting production
+- ✅ Follows data science best practices
+
+**Note**: All output directories are gitignored. Only configuration files under `src/configs/` are version controlled.
+
 ## Notes
 
 - Add `src/` to PYTHONPATH when running tests or importing modules
-- All generated artifacts are gitignored (artifacts/, models/, mlruns/)
-- MLflow experiments are stored in `src/mlruns/`
-- Configuration files are version controlled for reproducibility
+- All generated outputs (models, artifacts, MLflow) are saved to `data/outputs/{run_type}/`
+- Configuration files in `src/configs/` are version controlled for reproducibility
+- Legacy `src/artifacts/`, `src/models/`, `src/mlruns/` directories are no longer used
