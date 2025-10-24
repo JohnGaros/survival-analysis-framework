@@ -1,6 +1,6 @@
 # Survival Analysis Methodology
 
-**Last Updated:** 2025-10-23
+**Last Updated:** 2025-10-24
 **Framework Version:** 1.0
 
 This document describes the theoretical foundations and implementation approach for the survival analysis framework. It is maintained alongside code changes to ensure consistency between theory and implementation.
@@ -17,7 +17,8 @@ This document describes the theoretical foundations and implementation approach 
 6. [Cross-Validation Strategy](#cross-validation-strategy)
 7. [Prediction Methodology](#prediction-methodology)
 8. [Implementation Architecture](#implementation-architecture)
-9. [References](#references)
+9. [Input/Output Organization](#inputoutput-organization)
+10. [References](#references)
 
 ---
 
@@ -569,6 +570,199 @@ class BaseSurvivalModel:
 
 ---
 
+## Input/Output Organization
+
+### Run Type System
+
+The framework distinguishes between two run types to enable safe parallel development and production workflows:
+
+```python
+RunType = Literal["sample", "production"]
+```
+
+**Sample Runs** (`run_type="sample"`):
+- Purpose: Development, testing, rapid iteration
+- Data: Small representative subset (~2,000 records)
+- Format: CSV for human readability
+- Location: `data/inputs/sample/`
+- Use case: Algorithm development, parameter tuning, validation
+
+**Production Runs** (`run_type="production"`):
+- Purpose: Final models, actual predictions, deployment
+- Data: Full population dataset
+- Format: Pickle (recommended for >10MB) or CSV
+- Location: `data/inputs/production/`
+- Use case: Generating predictions for all customers
+
+### Directory Structure
+
+```
+data/
+├── inputs/
+│   ├── sample/                          # Development datasets
+│   │   ├── survival_inputs_sample2000.csv
+│   │   └── README.md
+│   └── production/                      # Full population datasets
+│       ├── survival_inputs_complete.pkl
+│       └── README.md
+└── outputs/
+    ├── sample/                          # Sample run outputs
+    │   ├── predictions/                 # Prediction CSVs
+    │   │   └── survival_predictions_sample_YYYYMMDD_HHMMSS.csv
+    │   ├── artifacts/                   # Training metrics, PH flags
+    │   │   ├── model_metrics.csv
+    │   │   ├── model_summary.csv
+    │   │   ├── ph_flags.csv
+    │   │   └── <model>/                 # Per-fold predictions
+    │   ├── models/                      # Saved model pipelines
+    │   │   └── sample_<model>.joblib_YYYYMMDD_HHMMSS
+    │   └── mlruns/                      # MLflow experiment tracking
+    └── production/                      # Production run outputs
+        ├── predictions/
+        │   └── survival_predictions_production_YYYYMMDD_HHMMSS.csv
+        ├── artifacts/
+        ├── models/
+        │   └── production_<model>.joblib_YYYYMMDD_HHMMSS
+        └── mlruns/
+```
+
+### File Format Support
+
+**Input Formats**:
+
+| Format | Extension | Use Case | Performance |
+|--------|-----------|----------|-------------|
+| CSV | `.csv` | Human-readable, small datasets (<10MB) | Slower I/O |
+| Pickle | `.pkl`, `.pickle` | Large datasets (>10MB), production | Fast I/O |
+
+**Auto-detection**: Format determined by file extension
+**Validation**: Schema checked on load (required columns, types)
+
+**Output Formats**:
+- **Predictions**: Always CSV for portability
+- **Models**: Joblib (sklearn standard)
+- **Artifacts**: CSV for metrics, NumPy arrays for predictions
+
+### File Naming Conventions
+
+All generated files include `run_type` prefix for clear identification:
+
+**Models**:
+```
+sample_cox_ph.joblib_20251024_143052
+production_rsf.joblib_20251024_143052
+```
+
+**Predictions**:
+```
+survival_predictions_sample_20251024_143052.csv
+survival_predictions_production_20251024_143052.csv
+```
+
+**Benefits**:
+- No file conflicts between sample and production runs
+- Easy identification of run provenance
+- Clear separation for testing vs deployment
+- Reproducible experiments with timestamped artifacts
+
+### Usage Examples
+
+**Command-Line Interface**:
+
+```bash
+# Sample run with CSV (default)
+python src/main.py
+
+# Sample run (explicit)
+python src/main.py \
+  --input data/inputs/sample/survival_inputs_sample2000.csv \
+  --run-type sample
+
+# Production run with pickle
+python src/main.py \
+  --input data/inputs/production/survival_inputs_complete.pkl \
+  --run-type production
+
+# Prediction only (skip training)
+python src/main.py \
+  --input data/inputs/sample/data.csv \
+  --run-type sample \
+  --predict-only
+
+# Training only (skip prediction)
+python src/main.py \
+  --input data/inputs/production/data.pkl \
+  --run-type production \
+  --train-only
+```
+
+**Programmatic API**:
+
+```python
+from main import run_pipeline
+
+# Sample run
+run_pipeline(
+    input_file="data/inputs/sample/survival_inputs_sample2000.csv",
+    run_type="sample"
+)
+
+# Production run
+run_pipeline(
+    input_file="data/inputs/production/survival_inputs_complete.pkl",
+    run_type="production",
+    predict_only=False,
+    train_only=False
+)
+```
+
+### Data Schema Requirements
+
+All input files (CSV or pickle) must contain:
+
+**Required Columns**:
+- `account_entities_key` (str/int): Unique customer identifier
+- `survival_months` (float): Time to event or censoring
+- `is_terminated` (bool/int): Event indicator (1 = terminated, 0 = censored)
+
+**Numeric Features** (9):
+- `debit_exp_smooth`: Exponentially smoothed debit amounts
+- `credit_exp_smooth`: Exponentially smoothed credit amounts
+- `balance_exp_smooth`: Exponentially smoothed account balance
+- `past_due_balance_exp_smooth`: Exponentially smoothed past due balance
+- `oldest_past_due_exp_smooth`: Exponentially smoothed oldest past due days
+- `waobd_exp_smooth`: Exponentially smoothed weighted average outstanding balance days
+- `total_settlements`: Total number of settlement agreements
+- `active_settlements`: Number of active settlements
+- `defaulted_settlements`: Number of defaulted settlements
+
+**Categorical Features** (2):
+- `typeoftariff_coarse`: Coarse tariff type category
+- `risk_level_coarse`: Coarse risk level category
+
+### Prediction Output Schema
+
+Generated predictions CSV contains:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `account_entities_key` | str/int | Customer identifier |
+| `model_name` | str | Best model used (e.g., "gbsa", "rsf") |
+| `expected_survival_months` | float | RMST - expected survival time |
+| `survival_prob_3m` | float | P(survival > 3 months) |
+| `survival_prob_6m` | float | P(survival > 6 months) |
+| `survival_prob_12m` | float | P(survival > 12 months) |
+| `survival_prob_18m` | float | P(survival > 18 months) |
+| `survival_prob_24m` | float | P(survival > 24 months) |
+| `survival_prob_36m` | float | P(survival > 36 months) |
+
+**Interpretation**:
+- Higher survival probability = lower churn risk
+- Expected survival months = area under survival curve (RMST)
+- All probabilities in [0, 1]
+
+---
+
 ## References
 
 ### Theoretical Foundations
@@ -592,6 +786,15 @@ class BaseSurvivalModel:
 ---
 
 ## Changelog
+
+### 2025-10-24 - I/O Organization Update
+- Added comprehensive Input/Output Organization section
+- Documented run_type system (sample vs production)
+- Described directory structure with separate outputs for each run type
+- Explained file format support (CSV and pickle with auto-detection)
+- Documented file naming conventions with run_type prefix
+- Provided CLI and programmatic API usage examples
+- Detailed data schema requirements for input and output
 
 ### 2025-10-23 - Initial Version
 - Documented survival analysis theory and fundamentals

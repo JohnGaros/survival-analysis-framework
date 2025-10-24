@@ -3,6 +3,10 @@ import os
 import datetime as dt
 import numpy as np
 import pandas as pd
+from typing import Literal
+
+# Run type for distinguishing sample vs production runs
+RunType = Literal["sample", "production"]
 
 
 def ensure_dir(path: str):
@@ -105,22 +109,77 @@ def save_model_metrics(df: pd.DataFrame, outdir: str):
     return path
 
 
-def versioned_name(base: str) -> str:
+def versioned_name(base: str, run_type: RunType = None) -> str:
     """Generate timestamped filename for versioning.
 
     Appends current timestamp to base name for creating unique versioned
-    filenames. Useful for saving models without overwriting previous versions.
+    filenames. Optionally includes run_type prefix for clarity.
 
     Args:
         base: Base filename without extension
+        run_type: Optional run type ("sample" or "production") to prefix filename
 
     Returns:
-        Versioned name in format "base_YYYYMMDD_HHMMSS"
+        Versioned name in format "[runtype_]base_YYYYMMDD_HHMMSS"
 
     Example:
         >>> name = versioned_name("cox_ph")
         >>> print(name)
         cox_ph_20250123_143052
+
+        >>> name = versioned_name("cox_ph", run_type="sample")
+        >>> print(name)
+        sample_cox_ph_20250123_143052
     """
     ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if run_type:
+        return f"{run_type}_{base}_{ts}"
     return f"{base}_{ts}"
+
+
+def get_output_paths(run_type: RunType = "sample") -> dict:
+    """Get standardized output directory paths for a given run type.
+
+    Creates and returns paths for all output directories, ensuring they
+    are properly organized by run type (sample vs production).
+
+    Args:
+        run_type: Type of run - "sample" for development, "production" for full data
+
+    Returns:
+        Dictionary with keys:
+        - base_dir: Root output directory for this run type
+        - predictions: Directory for prediction CSVs
+        - artifacts: Directory for training artifacts (metrics, PH flags)
+        - models: Directory for saved model files
+        - mlruns: Directory for MLflow tracking
+
+    Example:
+        >>> paths = get_output_paths("sample")
+        >>> print(paths["predictions"])
+        data/outputs/sample/predictions
+
+        >>> paths = get_output_paths("production")
+        >>> print(paths["models"])
+        data/outputs/production/models
+
+    Notes:
+        - All paths are created if they don't exist
+        - Maintains separation between sample and production runs
+        - Used by training and prediction pipelines
+    """
+    base_dir = f"data/outputs/{run_type}"
+
+    paths = {
+        "base_dir": base_dir,
+        "predictions": os.path.join(base_dir, "predictions"),
+        "artifacts": os.path.join(base_dir, "artifacts"),
+        "models": os.path.join(base_dir, "models"),
+        "mlruns": os.path.join(base_dir, "mlruns"),
+    }
+
+    # Ensure all directories exist
+    for path in paths.values():
+        ensure_dir(path)
+
+    return paths

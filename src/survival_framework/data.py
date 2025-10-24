@@ -1,12 +1,17 @@
 from __future__ import annotations
-from typing import Tuple, List
+from typing import Tuple, List, Literal
 import numpy as np
 import pandas as pd
+import pickle
+from pathlib import Path
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.pipeline import Pipeline
+
+# Run type for distinguishing sample vs production runs
+RunType = Literal["sample", "production"]
 
 # Expected columns
 NUM_COLS = [
@@ -16,6 +21,7 @@ NUM_COLS = [
     "past_due_balance_exp_smooth",
     "oldest_past_due_exp_smooth",
     "waobd_exp_smooth",
+    "kwh_exp_smooth",
     "total_settlements",
     "active_settlements",
     "defaulted_settlements",
@@ -24,6 +30,76 @@ CAT_COLS = ["typeoftariff_coarse", "risk_level_coarse"]
 ID_COL = "account_entities_key"
 TIME_COL = "survival_months"
 EVENT_COL = "is_terminated"
+
+
+def load_data(
+    file_path: str,
+    run_type: RunType = "sample"
+) -> pd.DataFrame:
+    """Load survival data from CSV or pickle file.
+
+    Automatically detects file format based on extension and loads the data.
+    Supports both CSV (.csv) and pickle (.pkl, .pickle) formats.
+
+    Args:
+        file_path: Path to input file (CSV or pickle)
+        run_type: Type of run - "sample" for development, "production" for full data.
+            Used for logging and output organization.
+
+    Returns:
+        DataFrame with survival data including features, time, and event columns
+
+    Raises:
+        FileNotFoundError: If file_path does not exist
+        ValueError: If file format is not supported
+
+    Example:
+        >>> # Load CSV
+        >>> df = load_data("data/inputs/sample/survival_inputs.csv", run_type="sample")
+        >>> print(df.shape)
+        (2000, 15)
+
+        >>> # Load pickle
+        >>> df = load_data("data/inputs/production/survival_data.pkl", run_type="production")
+        >>> print(df.shape)
+        (50000, 15)
+
+    Notes:
+        - CSV files are loaded with pandas.read_csv()
+        - Pickle files are loaded with pandas.read_pickle()
+        - run_type does not affect data loading, only metadata logging
+    """
+    file_path = Path(file_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"Data file not found: {file_path}")
+
+    # Determine file format from extension
+    suffix = file_path.suffix.lower()
+
+    if suffix == '.csv':
+        print(f"Loading CSV data from {file_path} (run_type={run_type})")
+        df = pd.read_csv(file_path)
+    elif suffix in ['.pkl', '.pickle']:
+        print(f"Loading pickle data from {file_path} (run_type={run_type})")
+        df = pd.read_pickle(file_path)
+    else:
+        raise ValueError(
+            f"Unsupported file format: {suffix}. "
+            f"Supported formats: .csv, .pkl, .pickle"
+        )
+
+    print(f"Loaded {len(df):,} records with {len(df.columns)} columns")
+
+    # Filter out invalid survival times (must be > 0)
+    if TIME_COL in df.columns:
+        invalid_count = (df[TIME_COL] <= 0).sum()
+        if invalid_count > 0:
+            print(f"WARNING: Removing {invalid_count:,} records with survival_months ≤ 0")
+            df = df[df[TIME_COL] > 0].copy()
+            print(f"Remaining: {len(df):,} records")
+
+    return df
 
 
 def to_structured_y(df: pd.DataFrame) -> np.ndarray:
@@ -113,6 +189,7 @@ def split_X_y(df: pd.DataFrame, dropna: bool = True) -> Tuple[pd.DataFrame, np.n
 
     Splits the input data into feature matrix X, structured survival array y,
     and account IDs. Optionally removes rows with missing values.
+    Automatically detects which numeric columns are present in the data.
 
     Args:
         df: Input DataFrame containing all required columns (NUM_COLS, CAT_COLS,
@@ -130,12 +207,19 @@ def split_X_y(df: pd.DataFrame, dropna: bool = True) -> Tuple[pd.DataFrame, np.n
         >>> X, y, ids = split_X_y(df)
         >>> X.shape, y.shape, ids.shape
         ((2000, 11), (2000,), (2000,))
+
+    Notes:
+        - Only uses numeric columns that are present in the DataFrame
+        - kwh_exp_smooth is optional (present in production, absent in sample)
     """
-    cols_needed = [ID_COL, TIME_COL, EVENT_COL] + NUM_COLS + CAT_COLS
+    # Use only numeric columns that are actually present in the data
+    num_cols_present = [col for col in NUM_COLS if col in df.columns]
+
+    cols_needed = [ID_COL, TIME_COL, EVENT_COL] + num_cols_present + CAT_COLS
     data = df[cols_needed].copy()
     if dropna:
         data = data.dropna()
-    X = data[NUM_COLS + CAT_COLS]
+    X = data[num_cols_present + CAT_COLS]
     y = to_structured_y(data)
     ids = data[ID_COL]
     return X, y, ids

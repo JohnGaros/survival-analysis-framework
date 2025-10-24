@@ -9,6 +9,9 @@ from survival_framework.data import (
     make_preprocessor,
     make_pipeline,
     CAT_COLS,
+    NUM_COLS,
+    load_data,
+    RunType,
 )
 from survival_framework.models import (
     CoxPHWrapper,
@@ -24,17 +27,17 @@ from survival_framework.validation import (
     evaluate_model,
     ph_assumption_flags,
 )
-from survival_framework.utils import ensure_dir, default_time_grid, save_model_metrics, versioned_name
+from survival_framework.utils import (
+    ensure_dir,
+    default_time_grid,
+    save_model_metrics,
+    versioned_name,
+    get_output_paths,
+)
 from survival_framework.tracking import start_run, log_params, log_metrics, log_artifact
 
 
-ARTIFACTS_DIR = "artifacts"
-MODELS_DIR = "models"
-ensure_dir(ARTIFACTS_DIR)
-ensure_dir(MODELS_DIR)
-
-
-def load_data(csv_path: str) -> pd.DataFrame:
+def _load_data_legacy(csv_path: str) -> pd.DataFrame:
     """Load survival data from CSV file.
 
     Args:
@@ -82,11 +85,11 @@ def build_models():
     }
 
 
-def train_all_models(csv_path: str):
+def train_all_models(file_path: str, run_type: RunType = "sample"):
     """Train and evaluate all survival models with cross-validation.
 
     Complete training pipeline that:
-    1. Loads data and performs train/test splits
+    1. Loads data from CSV or pickle file
     2. Checks proportional hazards assumptions
     3. Trains all models with 5-fold cross-validation
     4. Computes survival metrics (C-index, IBS, time-dependent AUC)
@@ -95,33 +98,46 @@ def train_all_models(csv_path: str):
     7. Generates model ranking summary
 
     Args:
-        csv_path: Path to CSV file containing survival data with required columns
-            (NUM_COLS, CAT_COLS, ID_COL, TIME_COL, EVENT_COL)
+        file_path: Path to input file (CSV or pickle) containing survival data with
+            required columns (NUM_COLS, CAT_COLS, ID_COL, TIME_COL, EVENT_COL)
+        run_type: Type of run - "sample" for development, "production" for full data.
+            Determines output directory structure and file naming.
 
     Side Effects:
-        - Creates artifacts/ directory with PH flags, per-fold predictions, and metrics
-        - Creates models/ directory with versioned joblib files for each model
+        - Creates data/outputs/{run_type}/artifacts/ with PH flags, predictions, metrics
+        - Creates data/outputs/{run_type}/models/ with versioned joblib files
         - Logs experiment to MLflow under "survival_framework" experiment
         - Prints progress messages and final summary paths
 
     Example:
-        >>> train_all_models("data/survival_inputs_sample2000.csv")
+        >>> # Sample run with CSV
+        >>> train_all_models("data/inputs/sample/data.csv", run_type="sample")
+        Loading CSV data from data/inputs/sample/data.csv (run_type=sample)
         === Training cox_ph ===
-        === Training coxnet ===
         ...
-        Saved: artifacts/model_metrics.csv artifacts/model_summary.csv
+
+        >>> # Production run with pickle
+        >>> train_all_models("data/inputs/production/data.pkl", run_type="production")
+        Loading pickle data from data/inputs/production/data.pkl (run_type=production)
+        ...
     """
-    df = load_data(csv_path)
+    # Get output paths for this run type
+    paths = get_output_paths(run_type)
+
+    # Load data (supports CSV and pickle)
+    df = load_data(file_path, run_type=run_type)
     X, y, ids = split_X_y(df)
 
     # PH check on raw features (+ categories) to flag issues
     ph_flags = ph_assumption_flags(X, y, strata=list(CAT_COLS))
-    ph_flags_path = os.path.join(ARTIFACTS_DIR, "ph_flags.csv")
+    ph_flags_path = os.path.join(paths["artifacts"], "ph_flags.csv")
     ph_flags.to_csv(ph_flags_path)
 
     times = default_time_grid(y)
 
-    pre = make_preprocessor()
+    # Detect which numeric columns are present in this dataset
+    num_cols_present = [col for col in NUM_COLS if col in X.columns]
+    pre = make_preprocessor(numeric=num_cols_present, categorical=CAT_COLS)
 
     models = build_models()
 
@@ -130,14 +146,19 @@ def train_all_models(csv_path: str):
 
     rows = []
 
-    with start_run(run_name="survival_framework_run"):
+    # MLflow run name includes run type
+    run_name = f"survival_framework_{run_type}"
+
+    with start_run(run_name=run_name):
+        # Log run type as parameter
+        log_params({"run_type": run_type, "input_file": file_path, "n_samples": len(df)})
         log_artifact(ph_flags_path)
 
         for name, model in models.items():
-            print(f"\n=== Training {name} ===")
+            print(f"\n=== Training {name} ({run_type}) ===")
             pipe = make_pipeline(pre, model)
 
-            fold_dir = os.path.join(ARTIFACTS_DIR, f"{name}")
+            fold_dir = os.path.join(paths["artifacts"], f"{name}")
             ensure_dir(fold_dir)
 
             for fold_idx, (tr, te) in enumerate(splits):
@@ -160,13 +181,14 @@ def train_all_models(csv_path: str):
 
             # Save fitted final model on full data
             pipe.fit(X, y)
-            model_path = os.path.join(MODELS_DIR, versioned_name(f"{name}.joblib"))
+            model_filename = versioned_name(f"{name}.joblib", run_type=run_type)
+            model_path = os.path.join(paths["models"], model_filename)
             joblib.dump(pipe, model_path)
             log_artifact(model_path)
 
     # Aggregate metrics
     metrics_df = pd.DataFrame(rows)
-    metrics_path = save_model_metrics(metrics_df, ARTIFACTS_DIR)
+    metrics_path = save_model_metrics(metrics_df, paths["artifacts"])
 
     # Rank models
     summary = (
@@ -175,9 +197,9 @@ def train_all_models(csv_path: str):
         .assign(rank_ibs=lambda d: d["ibs"].rank(ascending=True, method="min"))
         .sort_values(["rank_cindex", "rank_ibs"])
     )
-    summary_path = os.path.join(ARTIFACTS_DIR, "model_summary.csv")
+    summary_path = os.path.join(paths["artifacts"], "model_summary.csv")
     summary.to_csv(summary_path, index=False)
 
-    print("Saved:", metrics_path, summary_path)
+    print(f"\n[{run_type.upper()}] Saved:", metrics_path, summary_path)
 
 

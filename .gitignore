@@ -26,10 +26,27 @@ env/
 .ipynb_checkpoints/
 *.ipynb
 
-# Generated artifacts
+# Generated artifacts (legacy)
 src/artifacts/
 src/models/
 src/mlruns/
+
+# MLflow tracking
+mlruns/
+
+# Data files (ignore all data, keep only README for documentation)
+data/*
+!data/README.md
+!data/inputs/
+data/inputs/*
+!data/inputs/sample/
+data/inputs/sample/*
+!data/inputs/sample/README.md
+!data/inputs/production/
+data/inputs/production/*
+!data/inputs/production/README.md
+!data/outputs/
+data/outputs/
 
 # Test outputs
 data/test_outputs/*
@@ -38,17 +55,6 @@ data/test_outputs/*
 htmlcov/
 .coverage
 coverage.xml
-
-# Data (keep structure but ignore large files in data/)
-# To track sample data, use: git add -f data/sample/*.csv
-data/*
-!data/sample/
-!data/sample/.gitkeep
-!data/README.md
-!data/test_outputs/
-!data/test_outputs/README.md
-!data/predictions/
-!data/predictions/.gitkeep
 
 # OS
 .DS_Store
