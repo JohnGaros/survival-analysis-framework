@@ -26,12 +26,12 @@ env/
 .ipynb_checkpoints/
 *.ipynb
 
-# Generated artifacts (legacy)
+# Generated artifacts (legacy - removed, now in data/outputs/)
 src/artifacts/
 src/models/
 src/mlruns/
-
-# MLflow tracking
+artifacts/
+models/
 mlruns/
 
 # Data files (ignore all data, keep only README for documentation)
@@ -84,6 +84,7 @@ GITHUB_SETUP.md
 RUN_TYPE_MIGRATION_GUIDE.md
 RUN_TYPE_IMPLEMENTATION_COMPLETE.md
 PRODUCTION_BENCHMARK_PRELIMINARY.md
+PHASE1_BENCHMARK.md
 src/PRODUCTION_DATA_FIXES.md
 src/PYSPARK_INTEGRATION_PLAN.md
 
