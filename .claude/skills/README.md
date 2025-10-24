@@ -59,6 +59,31 @@ Comprehensive validation of model predictions and artifacts.
 
 ---
 
+### parameter-management
+
+Guide for centralizing and documenting all configurable parameters.
+
+**Usage:**
+```
+/skill parameter-management
+```
+
+**What it does:**
+- Provides patterns for parameter organization
+- Shows how to document parameters with docstrings
+- Demonstrates environment-specific configurations
+- Guides when to add new parameters vs keep constants
+- Includes examples for hyperparameters, data config, analysis config
+- Shows JSON serialization for experiment tracking
+
+**Use when:**
+- Adding new hyperparameters to models
+- Introducing configurable data features
+- Creating analysis parameters (time horizons, CV folds)
+- Need to document what a parameter controls
+
+---
+
 ## Skill vs Agent
 
 **Skills** are preferred over agents because they:
