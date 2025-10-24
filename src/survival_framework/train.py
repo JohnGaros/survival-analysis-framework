@@ -57,20 +57,31 @@ def _load_data_legacy(csv_path: str) -> pd.DataFrame:
     return pd.read_csv(csv_path)
 
 
-def build_models():
+def build_models(hyperparameters=None):
     """Construct dictionary of all survival models to train.
 
-    Instantiates all model wrappers with default or specified hyperparameters.
+    Instantiates all model wrappers with hyperparameters from config or defaults.
     Models include Cox PH, regularized Cox, Weibull AFT, gradient boosting,
     and random survival forest.
+
+    Args:
+        hyperparameters: ModelHyperparameters instance with configured parameters.
+            If None, uses default hyperparameters.
 
     Returns:
         Dictionary mapping model names to instantiated model wrapper objects
 
     Example:
+        >>> # Using defaults
         >>> models = build_models()
         >>> print(list(models.keys()))
         ['cox_ph', 'coxnet', 'weibull_aft', 'gbsa', 'rsf']
+
+        >>> # Using custom hyperparameters
+        >>> from survival_framework.config import ModelHyperparameters
+        >>> hp = ModelHyperparameters.for_environment("production")
+        >>> models = build_models(hp)
+        >>> # GBSA will use production-optimized parameters
 
     Note:
         StratifiedCoxWrapper is excluded because it requires DataFrame input with
@@ -78,13 +89,35 @@ def build_models():
         pipeline (specifically VarianceThreshold which converts to numpy arrays).
         To use StratifiedCoxWrapper, train it separately without the pipeline.
     """
+    if hyperparameters is None:
+        from survival_framework.config import ModelHyperparameters
+        hyperparameters = ModelHyperparameters()
+
     return {
-        "cox_ph": CoxPHWrapper(),
-        "coxnet": CoxnetWrapper(l1_ratio=0.5),
+        "cox_ph": CoxPHWrapper(
+            max_iter=hyperparameters.cox_max_iter
+        ),
+        "coxnet": CoxnetWrapper(
+            l1_ratio=hyperparameters.coxnet_l1_ratio,
+            alpha_min_ratio=hyperparameters.coxnet_alpha_min_ratio,
+            n_alphas=hyperparameters.coxnet_n_alphas
+        ),
         # "cox_stratified": StratifiedCoxWrapper(),  # Incompatible with pipeline - requires raw DataFrame
         "weibull_aft": WeibullAFTWrapper(),
-        "gbsa": GBSAWrapper(),
-        "rsf": RSFWrapper(),
+        "gbsa": GBSAWrapper(
+            n_estimators=hyperparameters.gbsa_n_estimators,
+            learning_rate=hyperparameters.gbsa_learning_rate,
+            max_depth=hyperparameters.gbsa_max_depth,
+            subsample=hyperparameters.gbsa_subsample,
+            min_samples_split=hyperparameters.gbsa_min_samples_split
+        ),
+        "rsf": RSFWrapper(
+            n_estimators=hyperparameters.rsf_n_estimators,
+            max_depth=hyperparameters.rsf_max_depth,
+            min_samples_split=hyperparameters.rsf_min_samples_split,
+            min_samples_leaf=hyperparameters.rsf_min_samples_leaf,
+            max_features=hyperparameters.rsf_max_features
+        ),
     }
 
 
@@ -135,7 +168,8 @@ def _train_single_fold(
 def train_all_models(
     file_path: str,
     run_type: RunType = "sample",
-    execution_config: Optional[ExecutionConfig] = None
+    execution_config: Optional[ExecutionConfig] = None,
+    config: Optional["SurvivalFrameworkConfig"] = None
 ):
     """Train and evaluate all survival models with cross-validation.
 
@@ -155,6 +189,9 @@ def train_all_models(
             Determines output directory structure and file naming.
         execution_config: Configuration for execution mode and parallelization.
             If None, defaults to pandas mode (sequential, backward compatible).
+            Ignored if config is provided.
+        config: Complete SurvivalFrameworkConfig with all parameters.
+            If provided, takes precedence over execution_config.
 
     Side Effects:
         - Creates data/outputs/{run_type}/artifacts/ with PH flags, predictions, metrics
@@ -163,20 +200,31 @@ def train_all_models(
         - Prints progress messages and final summary paths
 
     Example:
-        >>> # Sample run with CSV
+        >>> # Sample run with CSV (backward compatible)
         >>> train_all_models("data/inputs/sample/data.csv", run_type="sample")
         Loading CSV data from data/inputs/sample/data.csv (run_type=sample)
         === Training cox_ph ===
         ...
 
-        >>> # Production run with pickle
-        >>> train_all_models("data/inputs/production/data.pkl", run_type="production")
+        >>> # Production run with full config
+        >>> from survival_framework.config import SurvivalFrameworkConfig
+        >>> cfg = SurvivalFrameworkConfig.for_run_type("production")
+        >>> train_all_models("data/inputs/production/data.pkl", config=cfg)
         Loading pickle data from data/inputs/production/data.pkl (run_type=production)
         ...
     """
-    # Default to pandas mode if no config provided (backward compatible)
-    if execution_config is None:
-        execution_config = ExecutionConfig(mode=ExecutionMode.PANDAS, n_jobs=1)
+    # Handle configuration
+    if config is not None:
+        # Use full config if provided
+        hyperparameters = config.hyperparameters
+        execution_config = config.execution
+        run_type = config.run_type
+    else:
+        # Backward compatible: use defaults
+        from survival_framework.config import ModelHyperparameters
+        hyperparameters = ModelHyperparameters.for_environment(run_type)
+        if execution_config is None:
+            execution_config = ExecutionConfig(mode=ExecutionMode.PANDAS, n_jobs=1)
 
     # Get output paths for this run type
     paths = get_output_paths(run_type)
@@ -196,7 +244,7 @@ def train_all_models(
     num_cols_present = [col for col in NUM_COLS if col in X.columns]
     pre = make_preprocessor(numeric=num_cols_present, categorical=CAT_COLS)
 
-    models = build_models()
+    models = build_models(hyperparameters)
 
     cv_cfg = CVConfig(n_splits=5, time_horizons=(3, 6, 12, 18, 24))
     splits = event_balanced_splitter(y, cv_cfg)

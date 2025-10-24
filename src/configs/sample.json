@@ -1,0 +1,73 @@
+{
+  "hyperparameters": {
+    "cox_max_iter": 10000,
+    "coxnet_l1_ratio": 0.5,
+    "coxnet_alpha_min_ratio": 0.01,
+    "coxnet_n_alphas": 100,
+    "gbsa_n_estimators": 100,
+    "gbsa_learning_rate": 0.1,
+    "gbsa_max_depth": 3,
+    "gbsa_subsample": 1.0,
+    "gbsa_min_samples_split": 2,
+    "rsf_n_estimators": 300,
+    "rsf_max_depth": null,
+    "rsf_min_samples_split": 10,
+    "rsf_min_samples_leaf": 5,
+    "rsf_max_features": null
+  },
+  "data": {
+    "numeric_features": [
+      "debit_exp_smooth",
+      "credit_exp_smooth",
+      "balance_exp_smooth",
+      "past_due_balance_exp_smooth",
+      "oldest_past_due_exp_smooth",
+      "waobd_exp_smooth",
+      "kwh_exp_smooth",
+      "total_settlements",
+      "active_settlements",
+      "defaulted_settlements"
+    ],
+    "categorical_features": [
+      "typeoftariff_coarse",
+      "risk_level_coarse"
+    ],
+    "stratification_columns": [
+      "typeoftariff_coarse",
+      "risk_level_coarse"
+    ],
+    "time_column": "survival_months",
+    "event_column": "is_terminated",
+    "id_column": "account_entities_key",
+    "variance_threshold": 0.01,
+    "missing_indicator": true,
+    "imputation_strategy": "mean",
+    "min_survival_time": 0.0
+  },
+  "analysis": {
+    "n_folds": 5,
+    "cv_random_state": 42,
+    "prediction_horizons": [
+      3,
+      6,
+      12,
+      18,
+      24
+    ],
+    "time_grid_points": 100,
+    "compute_brier_score": true,
+    "compute_time_dependent_auc": true
+  },
+  "execution": {
+    "mode": "pandas",
+    "n_jobs": 1,
+    "verbose": 10,
+    "backend": "loky",
+    "auto_mode": false,
+    "size_threshold_mb": 10.0,
+    "spark_master": "local[*]",
+    "spark_memory": "4g"
+  },
+  "run_type": "sample",
+  "description": "Fast configuration for testing with sample data"
+}

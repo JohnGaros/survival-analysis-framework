@@ -13,6 +13,7 @@ from survival_framework.data import RunType
 from survival_framework.config import (
     ExecutionConfig,
     ExecutionMode,
+    SurvivalFrameworkConfig,
     create_execution_config,
     get_data_size_mb,
     select_execution_mode
@@ -28,6 +29,7 @@ def run_pipeline(
     predict_only: bool = False,
     train_only: bool = False,
     execution_config: Optional[ExecutionConfig] = None,
+    config: Optional[SurvivalFrameworkConfig] = None,
 ) -> int:
     """Run the survival analysis pipeline.
 
@@ -39,13 +41,17 @@ def run_pipeline(
         input_file: Path to input file (CSV or pickle). Can be relative or absolute.
             Default: "data/inputs/sample/survival_inputs_sample2000.csv"
         run_type: Type of run - "sample" for development, "production" for full data.
-            Default: "sample"
+            Default: "sample". Ignored if config is provided.
         predict_only: If True, skip training and only generate predictions using
             existing models. Default: False
         train_only: If True, only train models and skip prediction generation.
             Default: False
         execution_config: Configuration for execution mode and parallelization.
             If None, creates default config with auto-detection based on data size.
+            Ignored if config is provided.
+        config: Complete SurvivalFrameworkConfig with all parameters including
+            hyperparameters, data config, analysis config, and execution config.
+            If provided, takes precedence over run_type and execution_config.
 
     Returns:
         Exit code (0 for success, 1 for failure)
@@ -92,8 +98,12 @@ def run_pipeline(
         print(f"ERROR: Input file not found: {input_file}")
         return 1
 
-    # Create or validate execution config
-    if execution_config is None:
+    # Handle configuration priority: config > execution_config > auto-detect
+    if config is not None:
+        # Use full config if provided
+        run_type = config.run_type
+        execution_config = config.execution
+    elif execution_config is None:
         # Auto-detect execution mode based on data size
         data_size_mb = get_data_size_mb(input_file)
         auto_mode = select_execution_mode(data_size_mb)
@@ -120,7 +130,7 @@ def run_pipeline(
         print("\n" + "=" * 70)
         print("PHASE 1: MODEL TRAINING")
         print("=" * 70)
-        train_all_models(input_file, run_type=run_type, execution_config=execution_config)
+        train_all_models(input_file, run_type=run_type, execution_config=execution_config, config=config)
 
     # Prediction phase
     if not train_only:
@@ -211,19 +221,37 @@ Examples:
         help="Verbosity level: 0 (silent), 10 (progress bars), 50 (detailed). Default: 10"
     )
 
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to configuration JSON file (e.g., configs/production.json). If provided, overrides other configuration parameters."
+    )
+
     args = parser.parse_args()
 
-    # Create execution config from CLI arguments
-    if args.execution_mode is None:
-        # Auto-detect mode
-        execution_config = None  # Will be auto-detected in run_pipeline
+    # Load config from file if provided
+    config = None
+    if args.config is not None:
+        if not os.path.exists(args.config):
+            print(f"ERROR: Config file not found: {args.config}")
+            return 1
+        print(f"Loading configuration from {args.config}")
+        config = SurvivalFrameworkConfig.load(args.config)
+        # Config file takes precedence, ignore other CLI arguments
+        execution_config = None
     else:
-        execution_config = create_execution_config(
-            mode=args.execution_mode,
-            n_jobs=args.n_jobs,
-            auto_mode=False,
-            verbose=args.verbose
-        )
+        # Create execution config from CLI arguments
+        if args.execution_mode is None:
+            # Auto-detect mode
+            execution_config = None  # Will be auto-detected in run_pipeline
+        else:
+            execution_config = create_execution_config(
+                mode=args.execution_mode,
+                n_jobs=args.n_jobs,
+                auto_mode=False,
+                verbose=args.verbose
+            )
 
     # Call the main pipeline function with parsed arguments
     return run_pipeline(
@@ -231,7 +259,8 @@ Examples:
         run_type=args.run_type,
         predict_only=args.predict_only,
         train_only=args.train_only,
-        execution_config=execution_config
+        execution_config=execution_config,
+        config=config
     )
 
 

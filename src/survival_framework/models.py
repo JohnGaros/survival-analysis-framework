@@ -105,13 +105,14 @@ class CoxPHWrapper(BaseSurvivalModel):
     name: str = "cox_ph"
     model: CoxPHSurvivalAnalysis = None
     alpha: float = 1.0
+    max_iter: int = 10_000
 
     def __post_init__(self):
         """Initialize the underlying Cox PH model with regularization."""
         if self.model is None:
             self.model = CoxPHSurvivalAnalysis(
                 alpha=self.alpha,  # L2 regularization for numerical stability
-                n_iter=200,
+                n_iter=self.max_iter,
                 tol=1e-9
             )
 
@@ -181,11 +182,15 @@ class CoxnetWrapper(BaseSurvivalModel):
         name: Model identifier, defaults to "coxnet"
         alphas: Regularization strengths to try. If None, auto-generated
         l1_ratio: Balance between L1 (1.0) and L2 (0.0) penalty. Defaults to 0.5
+        alpha_min_ratio: Ratio of smallest to largest alpha in path
+        n_alphas: Number of alphas in regularization path
         model: Underlying CoxnetSurvivalAnalysis instance
     """
     name: str = "coxnet"
     alphas: Optional[np.ndarray] = None
     l1_ratio: float = 0.5
+    alpha_min_ratio: float = 0.01
+    n_alphas: int = 100
     model: CoxnetSurvivalAnalysis = None
 
     def __post_init__(self):
@@ -194,6 +199,8 @@ class CoxnetWrapper(BaseSurvivalModel):
             self.model = CoxnetSurvivalAnalysis(
                 l1_ratio=self.l1_ratio,
                 alphas=self.alphas,
+                alpha_min_ratio=self.alpha_min_ratio,
+                n_alphas=self.n_alphas,
                 max_iter=10_000,
                 fit_baseline_model=True  # Required for predict_survival_function
             )
@@ -433,6 +440,11 @@ class GBSAWrapper(BaseSurvivalModel):
     Attributes:
         name: Model identifier, defaults to "gbsa"
         model: Underlying GradientBoostingSurvivalAnalysis instance
+        n_estimators: Number of boosting iterations
+        learning_rate: Learning rate (shrinkage parameter)
+        max_depth: Maximum depth of individual trees
+        subsample: Fraction of samples to use for each tree
+        min_samples_split: Minimum samples required to split a node
 
     Note:
         Gradient boosting often provides high predictive accuracy but may
@@ -440,11 +452,23 @@ class GBSAWrapper(BaseSurvivalModel):
     """
     name: str = "gbsa"
     model: GradientBoostingSurvivalAnalysis = None
+    n_estimators: int = 100
+    learning_rate: float = 0.1
+    max_depth: int = 3
+    subsample: float = 1.0
+    min_samples_split: int = 2
 
     def __post_init__(self):
-        """Initialize GradientBoostingSurvivalAnalysis with fixed random seed."""
+        """Initialize GradientBoostingSurvivalAnalysis with configured parameters."""
         if self.model is None:
-            self.model = GradientBoostingSurvivalAnalysis(random_state=42)
+            self.model = GradientBoostingSurvivalAnalysis(
+                n_estimators=self.n_estimators,
+                learning_rate=self.learning_rate,
+                max_depth=self.max_depth,
+                subsample=self.subsample,
+                min_samples_split=self.min_samples_split,
+                random_state=42
+            )
 
     def fit(self, X, y):
         """Fit gradient boosting survival model.
@@ -497,6 +521,11 @@ class RSFWrapper(BaseSurvivalModel):
     Attributes:
         name: Model identifier, defaults to "rsf"
         model: Underlying RandomSurvivalForest instance
+        n_estimators: Number of trees in the forest
+        max_depth: Maximum depth of trees (None = unlimited)
+        min_samples_split: Minimum samples required to split a node
+        min_samples_leaf: Minimum samples required in leaf node
+        max_features: Number of features to consider per split (None = sqrt(n_features))
 
     Note:
         RSF provides robust non-parametric estimates and handles non-linear
@@ -504,12 +533,22 @@ class RSFWrapper(BaseSurvivalModel):
     """
     name: str = "rsf"
     model: RandomSurvivalForest = None
+    n_estimators: int = 300
+    max_depth: Optional[int] = None
+    min_samples_split: int = 10
+    min_samples_leaf: int = 5
+    max_features: Optional[int] = None
 
     def __post_init__(self):
-        """Initialize RandomSurvivalForest with 300 trees and fixed random seed."""
+        """Initialize RandomSurvivalForest with configured parameters."""
         if self.model is None:
             self.model = RandomSurvivalForest(
-                n_estimators=300, min_samples_split=10, min_samples_leaf=5, random_state=42
+                n_estimators=self.n_estimators,
+                max_depth=self.max_depth,
+                min_samples_split=self.min_samples_split,
+                min_samples_leaf=self.min_samples_leaf,
+                max_features=self.max_features,
+                random_state=42
             )
 
     def fit(self, X, y):

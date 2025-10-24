@@ -8,10 +8,11 @@ This module provides configuration for different execution modes:
 """
 from __future__ import annotations
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import os
 import multiprocessing
+import json
 
 
 class ExecutionMode(str, Enum):
@@ -229,3 +230,489 @@ def get_data_size_mb(file_path: str) -> float:
     size_bytes = os.path.getsize(file_path)
     size_mb = size_bytes / (1024 * 1024)
     return size_mb
+
+
+# ============================================================================
+# Model Hyperparameters Configuration
+# ============================================================================
+
+@dataclass
+class ModelHyperparameters:
+    """Hyperparameters for all survival models.
+
+    Attributes control model complexity and training behavior. Different
+    values may be appropriate for sample vs production data.
+
+    Attributes:
+        cox_max_iter: Maximum iterations for Cox model optimization
+        coxnet_l1_ratio: Balance between L1 (1.0) and L2 (0.0) penalty for CoxNet
+        coxnet_alpha_min_ratio: Ratio of smallest to largest alpha in path
+        coxnet_n_alphas: Number of alphas in regularization path
+        gbsa_n_estimators: Number of boosting iterations for GBSA
+        gbsa_learning_rate: Learning rate (shrinkage) for GBSA
+        gbsa_max_depth: Maximum depth of individual trees in GBSA
+        gbsa_subsample: Fraction of samples used for each tree in GBSA
+        gbsa_min_samples_split: Minimum samples required to split a node in GBSA
+        rsf_n_estimators: Number of trees in Random Survival Forest
+        rsf_max_depth: Maximum depth of trees in RSF (None = unlimited)
+        rsf_min_samples_split: Minimum samples required to split a node in RSF
+        rsf_min_samples_leaf: Minimum samples required in leaf node for RSF
+        rsf_max_features: Number of features to consider per split in RSF
+    """
+    # Cox PH models
+    cox_max_iter: int = 10_000
+    """Maximum iterations for Cox model optimization."""
+
+    coxnet_l1_ratio: float = 0.5
+    """Balance between L1 (1.0) and L2 (0.0) penalty for CoxNet.
+
+    Valid range: [0.0, 1.0]
+    - 0.0 = Ridge (L2 only)
+    - 1.0 = Lasso (L1 only)
+    - 0.5 = Elastic net (balanced)
+    """
+
+    coxnet_alpha_min_ratio: float = 0.01
+    """Ratio of smallest to largest alpha in regularization path."""
+
+    coxnet_n_alphas: int = 100
+    """Number of alphas in regularization path for cross-validation."""
+
+    # Gradient Boosting
+    gbsa_n_estimators: int = 100
+    """Number of boosting iterations for GBSA.
+
+    Valid range: [10, 1000]
+    - Sample data: 100 (default)
+    - Production data: 50 (faster, still accurate)
+
+    Note: Larger values increase accuracy but runtime scales linearly.
+    """
+
+    gbsa_learning_rate: float = 0.1
+    """Learning rate (shrinkage) for GBSA.
+
+    Valid range: [0.001, 1.0]
+    - Lower values require more estimators but may generalize better
+    - Higher values converge faster but may overfit
+    """
+
+    gbsa_max_depth: int = 3
+    """Maximum depth of individual trees in GBSA.
+
+    Valid range: [1, 10]
+    - Shallow trees (1-3): Fast, less overfitting, good for linear patterns
+    - Deep trees (5-10): Slow, captures complex interactions
+    """
+
+    gbsa_subsample: float = 1.0
+    """Fraction of samples used for each tree in GBSA.
+
+    Valid range: [0.1, 1.0]
+    - 1.0: Use all samples (default)
+    - 0.5: Use 50% (faster, adds randomness, reduces overfitting)
+    """
+
+    gbsa_min_samples_split: int = 2
+    """Minimum samples required to split a node in GBSA.
+
+    Valid range: [2, 1000]
+    - Small data: 2 (default)
+    - Large data: 100+ (prevents overfitting, speeds up training)
+    """
+
+    # Random Survival Forest
+    rsf_n_estimators: int = 300
+    """Number of trees in Random Survival Forest.
+
+    Valid range: [10, 1000]
+    - Sample data: 300 (high accuracy)
+    - Production data: 100 (faster, still robust)
+
+    Note: RSF benefits from more trees, but runtime is O(n_estimators).
+    """
+
+    rsf_max_depth: Optional[int] = None
+    """Maximum depth of trees in RSF. None = unlimited.
+
+    Valid range: [1, 50] or None
+    - None: Grow until leaves are pure (default, can be slow)
+    - 10: Good balance for large datasets
+    """
+
+    rsf_min_samples_split: int = 10
+    """Minimum samples required to split a node in RSF.
+
+    Valid range: [2, 1000]
+    - Small data: 10 (default)
+    - Large data: 100+ (prevents overfitting, speeds up training)
+    """
+
+    rsf_min_samples_leaf: int = 5
+    """Minimum samples required in leaf node for RSF.
+
+    Valid range: [1, 500]
+    - Smaller values = more complex trees, longer training
+    - Larger values = simpler trees, faster training
+    """
+
+    rsf_max_features: Optional[int] = None
+    """Number of features to consider per split in RSF. None = sqrt(n_features).
+
+    Valid range: [1, n_features] or None
+    - None: Use sqrt(n_features) (default, good for most cases)
+    - 5: Fixed number (useful when n_features is large)
+    """
+
+    @classmethod
+    def for_environment(cls, run_type: str) -> "ModelHyperparameters":
+        """Create hyperparameters optimized for specific environment.
+
+        Args:
+            run_type: One of "sample", "production", "experiment"
+
+        Returns:
+            ModelHyperparameters instance with appropriate defaults
+
+        Example:
+            >>> params = ModelHyperparameters.for_environment("production")
+            >>> params.gbsa_n_estimators
+            50
+        """
+        if run_type == "production":
+            return cls(
+                # Faster GBSA for large data
+                gbsa_n_estimators=50,
+                gbsa_learning_rate=0.2,
+                gbsa_max_depth=2,
+                gbsa_subsample=0.5,
+                gbsa_min_samples_split=100,
+                # Faster RSF for large data
+                rsf_n_estimators=100,
+                rsf_max_depth=10,
+                rsf_min_samples_split=100,
+                rsf_min_samples_leaf=50,
+                rsf_max_features=5
+            )
+        elif run_type == "experiment":
+            return cls(
+                # More thorough for experiments
+                gbsa_n_estimators=200,
+                gbsa_learning_rate=0.05,
+                rsf_n_estimators=500
+            )
+        else:  # sample or default
+            return cls()  # Use defaults
+
+
+# ============================================================================
+# Data Configuration
+# ============================================================================
+
+@dataclass
+class DataConfig:
+    """Configuration for data loading and feature selection.
+
+    Defines which features to use, how to handle missing data, and
+    preprocessing options.
+
+    Attributes:
+        numeric_features: Tuple of numeric feature column names
+        categorical_features: Tuple of categorical feature column names
+        stratification_columns: Tuple of columns for stratified Cox models
+        time_column: Column containing survival time
+        event_column: Column containing event indicator (True/1 = event occurred)
+        id_column: Column containing unique identifiers for samples
+        variance_threshold: Minimum variance required for feature inclusion
+        missing_indicator: Whether to add binary indicators for missing values
+        imputation_strategy: Strategy for imputing missing numeric values
+        min_survival_time: Minimum valid survival time (records below are filtered)
+    """
+    # Feature columns
+    numeric_features: tuple[str, ...] = (
+        "debit_exp_smooth",
+        "credit_exp_smooth",
+        "balance_exp_smooth",
+        "past_due_balance_exp_smooth",
+        "oldest_past_due_exp_smooth",
+        "waobd_exp_smooth",
+        "kwh_exp_smooth",
+        "total_settlements",
+        "active_settlements",
+        "defaulted_settlements"
+    )
+    """Numeric features for survival model.
+
+    All features should be continuous or count variables that benefit
+    from standardization. Add/remove features here to experiment with
+    different feature sets.
+    """
+
+    categorical_features: tuple[str, ...] = (
+        "typeoftariff_coarse",
+        "risk_level_coarse"
+    )
+    """Categorical features for survival model.
+
+    Features will be one-hot encoded during preprocessing. Ensure
+    categories are properly labeled in raw data.
+    """
+
+    stratification_columns: tuple[str, ...] = (
+        "typeoftariff_coarse",
+        "risk_level_coarse"
+    )
+    """Columns to use for stratified Cox models.
+
+    These columns define strata for handling non-proportional hazards.
+    Must be subset of categorical_features.
+    """
+
+    time_column: str = "survival_months"
+    """Column containing survival time."""
+
+    event_column: str = "is_terminated"
+    """Column containing event indicator (True/1 = event occurred)."""
+
+    id_column: str = "account_entities_key"
+    """Column containing unique identifiers for samples."""
+
+    # Preprocessing options
+    variance_threshold: float = 0.01
+    """Minimum variance required for feature to be included.
+
+    Valid range: [0.0, 1.0]
+    Features with variance below this threshold are removed as they
+    provide little discriminative information.
+    """
+
+    missing_indicator: bool = True
+    """Whether to add binary indicators for missing values.
+
+    When True, adds an indicator column for each feature with missing
+    values before imputation. This preserves information about
+    missingness patterns.
+    """
+
+    imputation_strategy: str = "mean"
+    """Strategy for imputing missing numeric values.
+
+    Valid options: "mean", "median", "most_frequent", "constant"
+    """
+
+    min_survival_time: float = 0.0
+    """Minimum valid survival time. Records below this are filtered.
+
+    Valid range: [0.0, inf)
+    Use > 0.0 to remove zero or negative survival times which are
+    typically data errors.
+    """
+
+
+# ============================================================================
+# Analysis Configuration
+# ============================================================================
+
+@dataclass
+class AnalysisConfig:
+    """Configuration for survival analysis workflow.
+
+    Controls cross-validation, time horizons for prediction, and
+    evaluation metrics.
+
+    Attributes:
+        n_folds: Number of cross-validation folds
+        cv_random_state: Random seed for reproducible CV splits
+        prediction_horizons: Time points (months) for time-dependent AUC evaluation
+        time_grid_points: Number of time points for survival function evaluation
+        compute_brier_score: Whether to compute Integrated Brier Score (IBS)
+        compute_time_dependent_auc: Whether to compute time-dependent AUC
+    """
+    # Cross-validation
+    n_folds: int = 5
+    """Number of cross-validation folds.
+
+    Valid range: [2, 10]
+    - 5: Standard, good balance of bias-variance
+    - 10: More thorough but slower
+    """
+
+    cv_random_state: int = 42
+    """Random seed for reproducible cross-validation splits."""
+
+    # Time horizons
+    prediction_horizons: tuple[int, ...] = (3, 6, 12, 18, 24)
+    """Time points (months) for time-dependent AUC evaluation.
+
+    These should cover the range of clinically relevant time periods.
+    Modify based on your domain:
+    - Short-term: 3, 6 months
+    - Medium-term: 12, 18 months
+    - Long-term: 24+ months
+    """
+
+    time_grid_points: int = 100
+    """Number of time points for survival function evaluation.
+
+    Valid range: [10, 1000]
+    More points = smoother curves but more computation.
+    """
+
+    # Metrics
+    compute_brier_score: bool = True
+    """Whether to compute Integrated Brier Score (IBS).
+
+    IBS measures calibration but can be expensive for large datasets.
+    Set to False to speed up evaluation if only discrimination
+    (C-index) is needed.
+    """
+
+    compute_time_dependent_auc: bool = True
+    """Whether to compute time-dependent AUC at prediction horizons.
+
+    Time-dependent AUC shows how discrimination changes over time.
+    Set to False to speed up evaluation.
+    """
+
+
+# ============================================================================
+# Master Configuration
+# ============================================================================
+
+@dataclass
+class SurvivalFrameworkConfig:
+    """Master configuration for survival analysis framework.
+
+    Centralizes all configurable parameters in one place. Can be
+    serialized to/from JSON for experiment tracking.
+
+    Attributes:
+        hyperparameters: Model hyperparameter configuration
+        data: Data loading and preprocessing configuration
+        analysis: Cross-validation and evaluation configuration
+        execution: Execution mode and parallelization configuration
+        run_type: Type of run ("sample", "production", "experiment")
+        description: Optional description of this configuration
+
+    Example:
+        >>> config = SurvivalFrameworkConfig.for_run_type("production")
+        >>> config.hyperparameters.gbsa_n_estimators
+        50
+        >>> config.save("configs/production.json")
+        >>> loaded = SurvivalFrameworkConfig.load("configs/production.json")
+    """
+    # Sub-configurations
+    hyperparameters: ModelHyperparameters = field(default_factory=ModelHyperparameters)
+    data: DataConfig = field(default_factory=DataConfig)
+    analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+
+    # Run metadata
+    run_type: str = "sample"
+    """Type of run: 'sample', 'production', or 'experiment'."""
+
+    description: str = ""
+    """Optional description of this configuration."""
+
+    @classmethod
+    def for_run_type(cls, run_type: str) -> "SurvivalFrameworkConfig":
+        """Create configuration optimized for specific run type.
+
+        Args:
+            run_type: One of "sample", "production", "experiment"
+
+        Returns:
+            Configured instance with appropriate defaults
+
+        Example:
+            >>> config = SurvivalFrameworkConfig.for_run_type("production")
+            >>> config.hyperparameters.gbsa_n_estimators
+            50
+        """
+        # Create execution config based on run type
+        if run_type == "production":
+            exec_config = ExecutionConfig(
+                mode=ExecutionMode.MULTIPROCESSING,
+                n_jobs=-1,
+                verbose=10
+            )
+        else:
+            exec_config = ExecutionConfig()
+
+        return cls(
+            hyperparameters=ModelHyperparameters.for_environment(run_type),
+            execution=exec_config,
+            run_type=run_type
+        )
+
+    def to_dict(self) -> dict:
+        """Convert configuration to dictionary for serialization.
+
+        Returns:
+            Dictionary representation of configuration
+
+        Example:
+            >>> config = SurvivalFrameworkConfig.for_run_type("sample")
+            >>> config_dict = config.to_dict()
+            >>> config_dict['run_type']
+            'sample'
+        """
+        def _dataclass_to_dict(obj):
+            """Recursively convert dataclass to dict."""
+            if hasattr(obj, '__dataclass_fields__'):
+                return {
+                    k: _dataclass_to_dict(v)
+                    for k, v in obj.__dict__.items()
+                }
+            elif isinstance(obj, Enum):
+                return obj.value
+            else:
+                return obj
+
+        return _dataclass_to_dict(self)
+
+    def save(self, path: str) -> None:
+        """Save configuration to JSON file.
+
+        Args:
+            path: Path to output JSON file
+
+        Example:
+            >>> config = SurvivalFrameworkConfig.for_run_type("production")
+            >>> config.save("configs/production.json")
+        """
+        config_dict = self.to_dict()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        with open(path, 'w') as f:
+            json.dump(config_dict, f, indent=2)
+
+        print(f"Configuration saved to {path}")
+
+    @classmethod
+    def load(cls, path: str) -> "SurvivalFrameworkConfig":
+        """Load configuration from JSON file.
+
+        Args:
+            path: Path to input JSON file
+
+        Returns:
+            SurvivalFrameworkConfig instance
+
+        Example:
+            >>> config = SurvivalFrameworkConfig.load("configs/production.json")
+            >>> config.hyperparameters.gbsa_n_estimators
+            50
+        """
+        with open(path) as f:
+            data = json.load(f)
+
+        # Reconstruct nested dataclasses
+        return cls(
+            hyperparameters=ModelHyperparameters(**data['hyperparameters']),
+            data=DataConfig(**data['data']),
+            analysis=AnalysisConfig(**data['analysis']),
+            execution=ExecutionConfig(**data['execution']),
+            run_type=data['run_type'],
+            description=data.get('description', '')
+        )
