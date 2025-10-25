@@ -115,7 +115,7 @@ Guide for implementing comprehensive runtime logging throughout the framework.
 
 ### context-management
 
-Guide for maintaining and optimizing context files (CLAUDE.md, README.md) for Claude Code.
+Templates and best practices for maintaining high-quality context files (CLAUDE.md, README.md, CHANGELOG.md).
 
 **Usage:**
 ```
@@ -123,20 +123,20 @@ Guide for maintaining and optimizing context files (CLAUDE.md, README.md) for Cl
 ```
 
 **What it does:**
-- Guides updating CLAUDE.md after git pushes
-- Maintains "Recent Updates" section (rolling last 5)
-- Ensures context files stay synchronized with code changes
-- Provides context optimization analysis script
+- Provides templates for context file sections
+- Documents pre-commit hook enforcement (automated verification)
+- Guides best practices for writing effective context
+- Includes `analyze_context.py` tool for quality analysis
 - Scores context quality (0-100) with recommendations
 - Checks git sync status
 
 **Use when:**
-- After every git push
-- After major feature completion
-- When CLAUDE.md feels outdated
-- Need to optimize context for Claude Code
+- Writing or updating CLAUDE.md sections
+- Need templates for context structure
+- Want to analyze context quality
+- Reference for what makes good context
 
-**Trigger**: Proactively after commits/pushes
+**Note**: Context updates are now enforced by pre-commit hook (automatic), not manual workflow
 
 ---
 

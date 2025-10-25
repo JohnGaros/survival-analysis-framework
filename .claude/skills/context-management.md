@@ -2,27 +2,22 @@
 
 ## Purpose
 
-This skill guides the maintenance and optimization of context files (CLAUDE.md, README.md, etc.) to ensure Claude Code has the most relevant and up-to-date information for effective development work.
+This skill provides templates, best practices, and tools for maintaining high-quality context files (CLAUDE.md, README.md, etc.) that help Claude Code understand the project effectively.
 
 ## Core Principle
 
-**Context files should be living documents that evolve with the codebase.** After every significant change (especially git pushes), context files should be updated to reflect the current state, recent changes, and future directions.
+**Context files should be living documents that evolve with the codebase.** Updates are enforced by the pre-commit hook (`scripts/pre_commit_context_check.py`) which blocks commits when CHANGELOG.md isn't updated for significant code changes.
 
-## When to Use This Skill
+## Quick Reference
 
-**Trigger this skill proactively after:**
-1. ✅ **Git push** - Always update context after pushing changes
-2. ✅ **Major feature completion** - Document new capabilities
-3. ✅ **Architecture changes** - Update structure documentation
-4. ✅ **Breaking changes** - Warn about deprecated patterns
-5. ✅ **Performance improvements** - Document optimizations
-6. ✅ **Bug fixes** - Update known issues section
+**Automated Enforcement**: Pre-commit hook verifies context updates
+**Manual Tool**: `python scripts/analyze_context.py` for quality analysis
+**Primary Files**: CLAUDE.md (AI context), CHANGELOG.md (human history), README.md (user guide)
 
-**Also trigger when:**
-- User explicitly requests context update
-- You notice context files are outdated (>1 week old modifications)
-- New patterns or conventions are established
-- Directory structure changes significantly
+**When context updates are required:**
+- Pre-commit hook detects significant code changes (src/*.py, requirements.txt, etc.)
+- Hook blocks commit until CHANGELOG.md is updated
+- See "Automated Pre-commit Hook" section below for details
 
 ## Context Files to Maintain
 

@@ -22,10 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Provides templates and best practices for human-readable change documentation
 
 ### Changed
-- Updated context-management skill to reference automated pre-commit hook
-  - Added "Automated Pre-commit Hook" section explaining hook behavior
+- Refactored context-management skill from workflow enforcer to reference guide
+  - Changed purpose from "trigger after git push" to "templates and best practices"
+  - Removed redundant "When to Use This Skill" section (now handled by pre-commit hook)
+  - Added "Quick Reference" section highlighting automated enforcement
   - Converted "After Git Push Checklist" to "Manual Context Update Checklist"
-  - Hook now enforces what was previously manual workflow
+  - Updated `.claude/skills/README.md` to reflect new purpose
+  - Skill now focuses on HOW to write good context, not WHEN (automated by hook)
 
 ## [0.3.0] - 2025-10-25
 
