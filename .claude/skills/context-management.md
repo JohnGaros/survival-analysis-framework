@@ -596,39 +596,55 @@ if __name__ == "__main__":
 
 Run this checklist after every `git push`:
 
-- [ ] **1. Run Context Analysis**
+- [ ] **1. Update CHANGELOG.md** *(New! See changelog-management skill)*
+  ```bash
+  # Option 1: Manual update (recommended)
+  nano CHANGELOG.md  # Add entries under [Unreleased]
+
+  # Option 2: Script-assisted (for draft)
+  python scripts/update_changelog.py --since-last-tag
+  ```
+  - Categorize changes: Added, Changed, Deprecated, Removed, Fixed, Security
+  - Use user-focused language (what/why, not just technical details)
+  - Link to issues/PRs if applicable
+  - See `.claude/skills/changelog-management.md` for guidelines
+
+- [ ] **2. Run Context Analysis**
   ```bash
   python scripts/analyze_context.py
   ```
 
-- [ ] **2. Review Recommendations**
+- [ ] **3. Review Recommendations**
   - Check priority items
   - Note files needing updates
 
-- [ ] **3. Update CLAUDE.md**
-  - Add entry to "Recent Updates" section
+- [ ] **4. Update CLAUDE.md**
+  - Add entry to "Recent Updates" section (curated highlights, not all changes)
   - Update relevant sections if architecture changed
   - Update command examples if CLI changed
   - Add new patterns or conventions
+  - **Note**: CLAUDE.md Recent Updates ≠ CHANGELOG.md
+    - CLAUDE.md: Last 5 major changes for Claude Code context
+    - CHANGELOG.md: Complete history for humans
 
-- [ ] **4. Update README.md (if user-facing changes)**
+- [ ] **5. Update README.md (if user-facing changes)**
   - Update usage examples
   - Add new features to feature list
   - Update installation if dependencies changed
 
-- [ ] **5. Update Module READMEs (if structure changed)**
+- [ ] **6. Update Module READMEs (if structure changed)**
   - src/README.md for new modules
   - tests/README.md for new test patterns
   - data/README.md for data organization changes
 
-- [ ] **6. Create/Update Skills (if new workflow)**
+- [ ] **7. Create/Update Skills (if new workflow)**
   - Document repeatable workflows
   - Capture new best practices
 
-- [ ] **7. Commit Context Updates**
+- [ ] **8. Commit Context Updates**
   ```bash
-  git add CLAUDE.md README.md src/README.md  # etc
-  git commit -m "docs: update context files after [feature/change]"
+  git add CHANGELOG.md CLAUDE.md README.md src/README.md  # etc
+  git commit -m "docs: update CHANGELOG and context files after [feature/change]"
   git push origin main
   ```
 

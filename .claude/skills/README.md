@@ -86,6 +86,88 @@ Guide for centralizing and documenting all configurable parameters.
 
 ---
 
+### logging-policy
+
+Guide for implementing comprehensive runtime logging throughout the framework.
+
+**Usage:**
+```
+/skill logging-policy
+```
+
+**What it does:**
+- Defines multi-level logging strategy (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- Sets up hierarchical logger organization
+- Creates four log files: main, performance, warnings, debug
+- Provides timing decorators and context managers
+- Implements warning categorization system
+- Guides performance metrics logging
+
+**Use when:**
+- Adding logging to new modules
+- Need to track execution timing
+- Want to categorize and analyze warnings
+- Adding performance monitoring
+
+**Focus**: Runtime execution monitoring and debugging
+
+---
+
+### context-management
+
+Guide for maintaining and optimizing context files (CLAUDE.md, README.md) for Claude Code.
+
+**Usage:**
+```
+/skill context-management
+```
+
+**What it does:**
+- Guides updating CLAUDE.md after git pushes
+- Maintains "Recent Updates" section (rolling last 5)
+- Ensures context files stay synchronized with code changes
+- Provides context optimization analysis script
+- Scores context quality (0-100) with recommendations
+- Checks git sync status
+
+**Use when:**
+- After every git push
+- After major feature completion
+- When CLAUDE.md feels outdated
+- Need to optimize context for Claude Code
+
+**Trigger**: Proactively after commits/pushes
+
+---
+
+### changelog-management
+
+Guide for maintaining CHANGELOG.md with human-readable change history.
+
+**Usage:**
+```
+/skill changelog-management
+```
+
+**What it does:**
+- Follows Keep a Changelog format with semantic versioning
+- Categorizes changes: Added, Changed, Deprecated, Removed, Fixed, Security
+- Provides templates and best practices for changelog entries
+- Guides version release workflow
+- Includes automation script for generating entries from git history
+- Integrates with post-push workflow
+
+**Use when:**
+- After every git push with significant changes
+- Before version releases
+- Adding new features, bug fixes, or breaking changes
+
+**Trigger**: After git push, alongside context-management
+
+**Focus**: Human-readable project history and troubleshooting
+
+---
+
 ## Skill vs Agent
 
 **Skills** are preferred over agents because they:
