@@ -105,7 +105,9 @@ def build_models(hyperparameters=None):
             alpha_min_ratio=hyperparameters.coxnet_alpha_min_ratio,
             n_alphas=hyperparameters.coxnet_n_alphas
         ),
-        # "cox_stratified": StratifiedCoxWrapper(),  # Incompatible with pipeline - requires raw DataFrame
+        # "cox_stratified": StratifiedCoxWrapper(
+        #     strata_cols=data_config.stratification_columns
+        # ),  # Incompatible with pipeline - requires raw DataFrame
         "weibull_aft": WeibullAFTWrapper(),
         "gbsa": GBSAWrapper(
             n_estimators=hyperparameters.gbsa_n_estimators,

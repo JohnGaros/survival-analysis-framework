@@ -245,32 +245,42 @@ class CoxnetWrapper(BaseSurvivalModel):
         return self.model.score(X, y)
 
 
-@dataclass
 class StratifiedCoxWrapper(BaseSurvivalModel):
     """Wrapper for stratified Cox PH model using lifelines.
 
     Implements Cox PH with stratification on categorical variables to handle
-    non-proportional hazards. Stratified by typeoftariff_coarse × risk_level_coarse
-    by default. Requires X to include original categorical columns (not one-hot encoded).
+    non-proportional hazards. Requires X to include original categorical columns
+    (not one-hot encoded).
 
     Attributes:
         name: Model identifier, defaults to "cox_stratified"
-        strata_cols: Tuple of column names to stratify on
+        strata_cols: Tuple of column names to stratify on (from DataConfig)
         cph: Underlying CoxPHFitter instance from lifelines
 
     Note:
         This model expects DataFrame input with original categorical columns intact,
         not the transformed output from preprocessing pipeline.
+
+    Example:
+        >>> from survival_framework.config import DataConfig
+        >>> config = DataConfig()
+        >>> model = StratifiedCoxWrapper(strata_cols=config.stratification_columns)
     """
 
-    name: str = "cox_stratified"
-    strata_cols: tuple = ("typeoftariff_coarse", "risk_level_coarse")
-    cph: CoxPHFitter = None
+    def __init__(self, strata_cols: tuple[str, ...] = None):
+        """Initialize stratified Cox model.
 
-    def __post_init__(self):
-        """Initialize lifelines CoxPHFitter if not provided."""
-        if self.cph is None:
-            self.cph = CoxPHFitter()
+        Args:
+            strata_cols: Tuple of column names to stratify on. If None, defaults
+                to ("typeoftariff_coarse", "risk_level_coarse") for backward compatibility.
+        """
+        if strata_cols is None:
+            # Backward compatibility default
+            strata_cols = ("typeoftariff_coarse", "risk_level_coarse")
+
+        self.name = "cox_stratified"
+        self.strata_cols = strata_cols
+        self.cph = CoxPHFitter()
 
     def fit(self, X_df: pd.DataFrame, y_struct):
         """Fit stratified Cox model.
