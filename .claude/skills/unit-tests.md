@@ -1,10 +1,18 @@
-# Test Suite Skill
+# Unit Tests Skill
 
-Run and analyze the test suite for the survival modeling framework.
+Run and analyze unit tests (pytest) for the survival modeling framework.
+
+## Purpose
+
+This skill executes unit tests with pytest, analyzes results, identifies failures,
+and helps maintain high test coverage (>80%).
+
+**For end-to-end pipeline testing, use the `integration-tests` skill instead.**
 
 ## Usage
 
-This skill executes tests, analyzes results, identifies failures, and helps maintain high test coverage.
+This skill focuses on fast, isolated unit tests that verify individual functions
+and modules in isolation.
 
 ## Commands
 

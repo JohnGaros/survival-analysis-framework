@@ -4,21 +4,23 @@ This directory contains Claude Code skills for the survival analysis framework.
 
 ## Available Skills
 
-### test-suite
+### unit-tests
 
-Run and analyze the test suite with pytest. Includes test execution, coverage analysis, and code quality checks.
+Run and analyze unit tests (pytest) for the survival modeling framework.
 
 **Usage:**
 ```
-/skill test-suite
+/skill unit-tests
 ```
 
 **What it does:**
-- Runs pytest with coverage
+- Runs fast, isolated pytest unit tests
 - Analyzes test failures
 - Checks code quality (black, isort, flake8, mypy)
 - Maintains >80% test coverage
 - Provides TDD workflow guidance
+
+**Focus**: Individual functions and modules in isolation
 
 ---
 
