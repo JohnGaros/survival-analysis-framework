@@ -23,6 +23,10 @@ rm -rf data/outputs/sample/artifacts/ data/outputs/sample/models/
 
 ### Step 2: Run End-to-End Pipeline
 ```bash
+# Using sample data (adjust filename as needed)
+python src/main.py --input data/inputs/sample/<sample_file>.csv --run-type sample
+
+# Example with current sample file:
 python src/main.py --input data/inputs/sample/survival_inputs_sample2000.csv --run-type sample
 ```
 
