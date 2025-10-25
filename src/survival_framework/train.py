@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import joblib
+import logging
 from joblib import Parallel, delayed
 import pandas as pd
 import numpy as np
@@ -38,6 +39,8 @@ from survival_framework.utils import (
     get_output_paths,
 )
 from survival_framework.tracking import start_run, log_params, log_metrics, log_artifact
+from survival_framework.logging_config import log_performance, ProgressLogger, capture_warnings
+from survival_framework.timing import Timer
 
 
 def _load_data_legacy(csv_path: str) -> pd.DataFrame:
@@ -169,7 +172,8 @@ def train_all_models(
     file_path: str,
     run_type: RunType = "sample",
     execution_config: Optional[ExecutionConfig] = None,
-    config: Optional["SurvivalFrameworkConfig"] = None
+    config: Optional["SurvivalFrameworkConfig"] = None,
+    logger: Optional[logging.Logger] = None
 ):
     """Train and evaluate all survival models with cross-validation.
 
@@ -213,6 +217,10 @@ def train_all_models(
         Loading pickle data from data/inputs/production/data.pkl (run_type=production)
         ...
     """
+    # Get or create logger
+    if logger is None:
+        logger = logging.getLogger("survival_framework.train")
+
     # Handle configuration
     if config is not None:
         # Use full config if provided
@@ -230,13 +238,19 @@ def train_all_models(
     paths = get_output_paths(run_type)
 
     # Load data (supports CSV and pickle)
-    df = load_data(file_path, run_type=run_type)
-    X, y, ids = split_X_y(df)
+    logger.info(f"Loading data from: {file_path}")
+    with Timer(logger, "Data loading"):
+        df = load_data(file_path, run_type=run_type)
+        X, y, ids = split_X_y(df)
+    logger.info(f"Loaded {len(df):,} records with {X.shape[1]} features")
 
     # PH check on raw features (+ categories) to flag issues
-    ph_flags = ph_assumption_flags(X, y, strata=list(CAT_COLS))
-    ph_flags_path = os.path.join(paths["artifacts"], "ph_flags.csv")
-    ph_flags.to_csv(ph_flags_path)
+    logger.info("Checking proportional hazards assumptions")
+    with Timer(logger, "Proportional hazards check"):
+        ph_flags = ph_assumption_flags(X, y, strata=list(CAT_COLS))
+        ph_flags_path = os.path.join(paths["artifacts"], "ph_flags.csv")
+        ph_flags.to_csv(ph_flags_path)
+    logger.info(f"PH flags saved to: {ph_flags_path}")
 
     times = default_time_grid(y)
 
@@ -245,6 +259,7 @@ def train_all_models(
     pre = make_preprocessor(numeric=num_cols_present, categorical=CAT_COLS)
 
     models = build_models(hyperparameters)
+    logger.info(f"Built {len(models)} models: {list(models.keys())}")
 
     cv_cfg = CVConfig(n_splits=5, time_horizons=(3, 6, 12, 18, 24))
     splits = event_balanced_splitter(y, cv_cfg)
@@ -253,6 +268,9 @@ def train_all_models(
 
     # MLflow run name includes run type
     run_name = f"survival_framework_{run_type}"
+
+    # Create progress tracker for models
+    progress = ProgressLogger(logger, total=len(models), desc="Model training")
 
     with start_run(run_name=run_name):
         # Log run type and execution config
@@ -266,7 +284,10 @@ def train_all_models(
         log_artifact(ph_flags_path)
 
         for name, model in models.items():
-            print(f"\n=== Training {name} ({run_type}, {execution_config.mode.value}, n_jobs={execution_config.n_jobs}) ===")
+            model_logger = logging.getLogger(f"survival_framework.models.{name}")
+            model_logger.info(f"Starting training: {name}")
+            logger.info(f"\n=== Training {name} ({run_type}, {execution_config.mode.value}, n_jobs={execution_config.n_jobs}) ===")
+
             pipe = make_pipeline(pre, model)
 
             fold_dir = os.path.join(paths["artifacts"], f"{name}")
@@ -276,62 +297,85 @@ def train_all_models(
             splits_list = list(splits)
 
             # Decide execution strategy
-            if execution_config.is_parallel():
-                # Parallel execution using joblib
-                print(f"  → Parallel CV with {execution_config.n_jobs} jobs")
-                fold_results = Parallel(
-                    n_jobs=execution_config.n_jobs,
-                    verbose=execution_config.verbose,
-                    backend=execution_config.backend
-                )(
-                    delayed(_train_single_fold)(
-                        model_name=name,
-                        pipeline=pipe,
-                        X=X,
-                        y=y,
-                        fold_idx=fold_idx,
-                        train_idx=tr,
-                        test_idx=te,
-                        times=times,
-                        fold_dir=fold_dir
-                    )
-                    for fold_idx, (tr, te) in enumerate(splits_list)
-                )
+            with Timer(model_logger, f"{name} cross-validation"):
+                with capture_warnings(model_logger) as warning_logger:
+                    if execution_config.is_parallel():
+                        # Parallel execution using joblib
+                        model_logger.info(f"Parallel CV with {execution_config.n_jobs} jobs")
+                        fold_results = Parallel(
+                            n_jobs=execution_config.n_jobs,
+                            verbose=execution_config.verbose,
+                            backend=execution_config.backend
+                        )(
+                            delayed(_train_single_fold)(
+                                model_name=name,
+                                pipeline=pipe,
+                                X=X,
+                                y=y,
+                                fold_idx=fold_idx,
+                                train_idx=tr,
+                                test_idx=te,
+                                times=times,
+                                fold_dir=fold_dir
+                            )
+                            for fold_idx, (tr, te) in enumerate(splits_list)
+                        )
 
-                # Collect results and log metrics
-                for fold_idx, res in enumerate(fold_results):
-                    rows.append(res)
-                    log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
-            else:
-                # Sequential execution (original behavior)
-                print(f"  → Sequential CV")
-                for fold_idx, (tr, te) in enumerate(splits_list):
-                    res = _train_single_fold(
-                        model_name=name,
-                        pipeline=pipe,
-                        X=X,
-                        y=y,
-                        fold_idx=fold_idx,
-                        train_idx=tr,
-                        test_idx=te,
-                        times=times,
-                        fold_dir=fold_dir
-                    )
-                    rows.append(res)
-                    log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
+                        # Collect results and log metrics
+                        for fold_idx, res in enumerate(fold_results):
+                            rows.append(res)
+                            log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
+                            log_performance(model_logger, f"Fold {fold_idx} completed",
+                                          cindex=round(res["cindex"], 4),
+                                          ibs=round(res["ibs"], 4))
+                    else:
+                        # Sequential execution (original behavior)
+                        model_logger.info(f"Sequential CV")
+                        for fold_idx, (tr, te) in enumerate(splits_list):
+                            with Timer(model_logger, f"Fold {fold_idx}"):
+                                res = _train_single_fold(
+                                    model_name=name,
+                                    pipeline=pipe,
+                                    X=X,
+                                    y=y,
+                                    fold_idx=fold_idx,
+                                    train_idx=tr,
+                                    test_idx=te,
+                                    times=times,
+                                    fold_dir=fold_dir
+                                )
+                            rows.append(res)
+                            log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
+                            log_performance(model_logger, f"Fold {fold_idx} completed",
+                                          cindex=round(res["cindex"], 4),
+                                          ibs=round(res["ibs"], 4))
+
+            # Compute average metrics for this model
+            model_results = [r for r in rows if r["model"] == name]
+            avg_cindex = np.mean([r["cindex"] for r in model_results])
+            avg_ibs = np.mean([r["ibs"] for r in model_results])
 
             # Save fitted final model on full data
-            pipe.fit(X, y)
+            model_logger.info("Fitting final model on complete dataset")
+            with Timer(model_logger, f"{name} final fit"):
+                pipe.fit(X, y)
             model_filename = versioned_name(f"{name}.joblib", run_type=run_type)
             model_path = os.path.join(paths["models"], model_filename)
             joblib.dump(pipe, model_path)
             log_artifact(model_path)
+            model_logger.info(f"Model saved to: {model_path}")
+
+            # Update progress
+            progress.update(1, metrics={"avg_cindex": avg_cindex, "avg_ibs": avg_ibs})
 
     # Aggregate metrics
+    logger.info("Aggregating cross-validation metrics")
     metrics_df = pd.DataFrame(rows)
     metrics_path = save_model_metrics(metrics_df, paths["artifacts"])
+    logger.info(f"Metrics saved to: {metrics_path}")
 
     # Rank models
+    logger.info("Ranking models by performance")
     summary = (
         metrics_df.groupby("model")[["cindex", "ibs"]].mean().reset_index()
         .assign(rank_cindex=lambda d: d["cindex"].rank(ascending=False, method="min"))
@@ -340,7 +384,12 @@ def train_all_models(
     )
     summary_path = os.path.join(paths["artifacts"], "model_summary.csv")
     summary.to_csv(summary_path, index=False)
+    logger.info(f"Model summary saved to: {summary_path}")
 
-    print(f"\n[{run_type.upper()}] Saved:", metrics_path, summary_path)
+    # Log top model
+    top_model = summary.iloc[0]
+    logger.info(f"Top model: {top_model['model']} (C-index={top_model['cindex']:.4f}, IBS={top_model['ibs']:.4f})")
+
+    logger.info(f"\n[{run_type.upper()}] Training complete")
 
 

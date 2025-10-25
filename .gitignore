@@ -46,7 +46,7 @@ data/inputs/sample/*
 data/inputs/production/*
 !data/inputs/production/README.md
 !data/outputs/
-data/outputs/
+data/outputs/  # Includes models/, artifacts/, mlruns/, logs/ for all run types
 
 # Test outputs
 data/test_outputs/*

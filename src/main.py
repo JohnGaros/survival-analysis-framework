@@ -18,8 +18,11 @@ from survival_framework.config import (
     get_data_size_mb,
     select_execution_mode
 )
+from survival_framework.logging_config import setup_logging, log_performance
+from survival_framework.timing import Timer
 import os
 import argparse
+import logging
 from typing import Optional, Literal
 
 
@@ -114,37 +117,55 @@ def run_pipeline(
         predict_only = False
         train_only = False
 
-    # Print run configuration
-    print("\n" + "=" * 70)
-    print(f"SURVIVAL ANALYSIS FRAMEWORK - {run_type.upper()} RUN")
-    print("=" * 70)
-    print(f"Input file: {input_file}")
-    print(f"File size:  {get_data_size_mb(input_file):.1f} MB")
-    print(f"Run type:   {run_type}")
-    print(f"Mode:       {'Predict only' if predict_only else 'Train only' if train_only else 'Train + Predict'}")
-    print(f"Execution:  {execution_config}")
-    print("=" * 70 + "\n")
+    # Setup logging
+    logger = setup_logging(run_type=run_type, log_level=logging.INFO)
 
-    # Training phase
-    if not predict_only:
-        print("\n" + "=" * 70)
-        print("PHASE 1: MODEL TRAINING")
-        print("=" * 70)
-        train_all_models(input_file, run_type=run_type, execution_config=execution_config, config=config)
+    # Log run configuration
+    logger.info("=" * 70)
+    logger.info(f"SURVIVAL ANALYSIS FRAMEWORK - {run_type.upper()} RUN")
+    logger.info("=" * 70)
+    logger.info(f"Input file: {input_file}")
+    log_performance(logger, "Configuration",
+                   file_size_mb=get_data_size_mb(input_file),
+                   n_jobs=execution_config.n_jobs,
+                   execution_mode=execution_config.mode.value)
+    logger.info(f"Run type:   {run_type}")
+    logger.info(f"Mode:       {'Predict only' if predict_only else 'Train only' if train_only else 'Train + Predict'}")
+    logger.info(f"Execution:  {execution_config}")
+    logger.info("=" * 70)
 
-    # Prediction phase
-    if not train_only:
-        print("\n" + "=" * 70)
-        print("PHASE 2: PREDICTION GENERATION")
-        print("=" * 70)
-        pred_path = generate_predictions(input_file, run_type=run_type)
-        print(f"\n✓ Predictions complete: {pred_path}")
+    try:
+        # Training phase
+        if not predict_only:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("PHASE 1: MODEL TRAINING")
+            logger.info("=" * 70)
+            with Timer(logger, "Complete training phase"):
+                train_all_models(input_file, run_type=run_type,
+                               execution_config=execution_config, config=config,
+                               logger=logger)
 
-    print("\n" + "=" * 70)
-    print(f"✓ {run_type.upper()} RUN COMPLETED SUCCESSFULLY")
-    print("=" * 70 + "\n")
+        # Prediction phase
+        if not train_only:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("PHASE 2: PREDICTION GENERATION")
+            logger.info("=" * 70)
+            with Timer(logger, "Prediction generation"):
+                pred_path = generate_predictions(input_file, run_type=run_type)
+                logger.info(f"Predictions saved to: {pred_path}")
 
-    return 0
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info(f"✓ {run_type.upper()} RUN COMPLETED SUCCESSFULLY")
+        logger.info("=" * 70)
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Pipeline failed: {str(e)}", exc_info=True)
+        return 1
 
 
 def main():
