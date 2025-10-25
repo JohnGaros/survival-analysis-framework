@@ -8,10 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Automated pre-commit hook for context file verification
+  - Created `scripts/pre_commit_context_check.py` (258 lines) to enforce CHANGELOG.md and CLAUDE.md updates
+  - Detects significant changes (src/*.py, requirements.txt, etc.) and verifies context files are updated
+  - Blocks commits if CHANGELOG.md not updated for significant code changes
+  - Warns if CLAUDE.md hasn't been updated in >7 days
+  - Integrated into `.pre-commit-config.yaml` as `check-context-files` hook
+  - Provides helpful error messages with update instructions
+
 - Changelog management skill with Keep a Changelog format
   - Created `.claude/skills/changelog-management.md` with comprehensive guidelines
   - Integrated with post-push workflow alongside context management
   - Provides templates and best practices for human-readable change documentation
+
+### Changed
+- Updated context-management skill to reference automated pre-commit hook
+  - Added "Automated Pre-commit Hook" section explaining hook behavior
+  - Converted "After Git Push Checklist" to "Manual Context Update Checklist"
+  - Hook now enforces what was previously manual workflow
 
 ## [0.3.0] - 2025-10-25
 

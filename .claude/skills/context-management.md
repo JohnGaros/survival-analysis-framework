@@ -592,11 +592,51 @@ if __name__ == "__main__":
 
 ## Context Update Workflow
 
-### After Git Push Checklist
+### Automated Pre-commit Hook
 
-Run this checklist after every `git push`:
+**The project now includes an automated pre-commit hook that enforces context file updates!**
 
-- [ ] **1. Update CHANGELOG.md** *(New! See changelog-management skill)*
+The hook (`scripts/pre_commit_context_check.py`) runs automatically before every commit and:
+- ✅ Detects significant code changes (src/*.py, requirements.txt, etc.)
+- ✅ Verifies CHANGELOG.md is updated for those changes
+- ✅ Warns if CLAUDE.md hasn't been updated in >7 days
+- ✅ Blocks commits if context files need updating
+- ✅ Provides helpful guidance on what to update
+
+**Setup** (one-time):
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+**What the hook checks:**
+
+Significant changes requiring CHANGELOG.md update:
+- Source code changes (`src/**/*.py`)
+- Dependency changes (`requirements*.txt`)
+- Package configuration (`setup.py`, `pyproject.toml`)
+
+Documentation-only changes (no update required):
+- Markdown files (`*.md`)
+- Test files (`tests/`)
+- Config files (`.pre-commit-config.yaml`, `.gitignore`)
+
+**If commit is blocked:**
+1. Update CHANGELOG.md under `[Unreleased]` section
+2. Update CLAUDE.md if major change
+3. Stage updated files: `git add CHANGELOG.md CLAUDE.md`
+4. Retry commit
+
+**Skip hook** (not recommended):
+```bash
+git commit --no-verify
+```
+
+### Manual Context Update Checklist
+
+For manual updates or when making multiple related changes:
+
+- [ ] **1. Update CHANGELOG.md** *(See changelog-management skill)*
   ```bash
   # Option 1: Manual update (recommended)
   nano CHANGELOG.md  # Add entries under [Unreleased]
@@ -609,16 +649,12 @@ Run this checklist after every `git push`:
   - Link to issues/PRs if applicable
   - See `.claude/skills/changelog-management.md` for guidelines
 
-- [ ] **2. Run Context Analysis**
+- [ ] **2. Run Context Analysis** (optional)
   ```bash
   python scripts/analyze_context.py
   ```
 
-- [ ] **3. Review Recommendations**
-  - Check priority items
-  - Note files needing updates
-
-- [ ] **4. Update CLAUDE.md**
+- [ ] **3. Update CLAUDE.md**
   - Add entry to "Recent Updates" section (curated highlights, not all changes)
   - Update relevant sections if architecture changed
   - Update command examples if CLI changed
@@ -627,24 +663,25 @@ Run this checklist after every `git push`:
     - CLAUDE.md: Last 5 major changes for Claude Code context
     - CHANGELOG.md: Complete history for humans
 
-- [ ] **5. Update README.md (if user-facing changes)**
+- [ ] **4. Update README.md (if user-facing changes)**
   - Update usage examples
   - Add new features to feature list
   - Update installation if dependencies changed
 
-- [ ] **6. Update Module READMEs (if structure changed)**
+- [ ] **5. Update Module READMEs (if structure changed)**
   - src/README.md for new modules
   - tests/README.md for new test patterns
   - data/README.md for data organization changes
 
-- [ ] **7. Create/Update Skills (if new workflow)**
+- [ ] **6. Create/Update Skills (if new workflow)**
   - Document repeatable workflows
   - Capture new best practices
 
-- [ ] **8. Commit Context Updates**
+- [ ] **7. Commit Context Updates**
   ```bash
   git add CHANGELOG.md CLAUDE.md README.md src/README.md  # etc
   git commit -m "docs: update CHANGELOG and context files after [feature/change]"
+  # Pre-commit hook will verify context is complete
   git push origin main
   ```
 

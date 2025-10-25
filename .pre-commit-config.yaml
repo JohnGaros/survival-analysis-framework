@@ -114,6 +114,15 @@ repos:
         pass_filenames: false
         stages: [commit]
 
+      # Context file verification
+      - id: check-context-files
+        name: Check CLAUDE.md and CHANGELOG.md are updated
+        entry: python scripts/pre_commit_context_check.py
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [commit]
+
 # Configuration for individual tools
 default_language_version:
   python: python3.11
