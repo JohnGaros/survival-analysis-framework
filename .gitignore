@@ -68,8 +68,7 @@ Thumbs.db
 # Logs
 *.log
 
-# Development/context management markdown files (not for end users)
-CLAUDE.md
+# Development markdown files (not for end users)
 CODE_QUALITY.md
 TESTING.md
 INTEGRATION_TESTING_GUIDE.md

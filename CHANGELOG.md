@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Code reviewer subagent for automated code quality checks
+  - CLAUDE.md now tracked in git (removed from .gitignore) for team-wide access
+
+### Changed
+- Enhanced pre-commit context check to recognize .claude/ directory changes as significant
+  - Now detects `.claude/agents/*.md`, `.claude/skills/*.md`, `scripts/*.py`, `scripts/*.sh`, `.git/hooks/*`
+  - Excludes `.claude/` files from "documentation-only" exemption
+  - Ensures CLAUDE.md updated when automation infrastructure changes
+- Updated CLAUDE.md with comprehensive documentation of automation infrastructure
+  - Documented code-reviewer agent, pre-commit hook, post-commit hook
+  - Added `.claude/assessments/` to directory structure
+  - Updated pre-commit hooks section with context verification details
   - Created `.claude/agents/code-reviewer.md` - specialized AI agent for code review
   - Automatically invoked after code changes to ensure quality and correctness
   - Survival analysis expertise (structured arrays, risk scores, IPCW, time grids)

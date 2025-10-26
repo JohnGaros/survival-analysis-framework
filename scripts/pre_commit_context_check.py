@@ -68,11 +68,16 @@ class ContextChecker:
             (r'requirements.*\.txt$', 'Dependency changes'),
             (r'setup\.py$', 'Package configuration changes'),
             (r'pyproject\.toml$', 'Project configuration changes'),
+            (r'\.claude/agents/.*\.md$', 'Claude Code agent changes'),
+            (r'\.claude/skills/.*\.md$', 'Claude Code skill changes'),
+            (r'scripts/.*\.py$', 'Utility script changes'),
+            (r'scripts/.*\.sh$', 'Shell script changes'),
+            (r'\.git/hooks/.*$', 'Git hook changes'),
         ]
 
-        # Check for documentation-only changes
+        # Check for documentation-only changes (excluding .claude/ which is significant)
         doc_only = all(
-            f.endswith('.md') or
+            (f.endswith('.md') and not f.startswith('.claude/')) or
             f.startswith('tests/') or
             f.startswith('.pre-commit') or
             f.startswith('.github/') or
