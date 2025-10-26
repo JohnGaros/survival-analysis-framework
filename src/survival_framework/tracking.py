@@ -1,8 +1,10 @@
 from __future__ import annotations
 import os
 import json
-from typing import Dict, Any
+import logging
+from typing import Dict, Any, Optional
 import mlflow
+import mlflow.exceptions
 
 
 def start_run(run_name: str, tags: Dict[str, str] | None = None):
@@ -98,3 +100,135 @@ def log_dict(name: str, d: Dict[str, Any]):
     with open(tmp, "w") as f:
         json.dump(d, f, indent=2)
     mlflow.log_artifact(tmp)
+
+
+# ============================================================================
+# Safe MLflow Wrappers with Graceful Degradation
+# ============================================================================
+
+
+def safe_log_metrics(
+    metrics: Dict[str, float],
+    step: Optional[int] = None,
+    logger: Optional[logging.Logger] = None
+) -> bool:
+    """Log metrics to MLflow with error handling.
+
+    Attempts to log metrics to MLflow. If MLflow fails, logs a warning but
+    continues execution. Metrics should still be persisted to CSV files.
+
+    Args:
+        metrics: Dictionary of metric names and values
+        step: Optional step number (e.g., fold index)
+        logger: Optional logger for warnings
+
+    Returns:
+        True if logging succeeded, False if it failed
+
+    Example:
+        >>> success = safe_log_metrics({"cindex": 0.742}, step=0, logger=logger)
+        >>> if not success:
+        ...     print("MLflow unavailable, metrics saved to CSV only")
+    """
+    try:
+        mlflow.log_metrics(metrics, step=step)
+        return True
+    except mlflow.exceptions.MlflowException as e:
+        if logger:
+            logger.warning(
+                f"MLflow metrics logging failed: {e}",
+                extra={"category": "mlflow_error"}
+            )
+        return False
+    except Exception as e:
+        if logger:
+            logger.error(
+                f"Unexpected error in MLflow metrics logging: {e}",
+                extra={"category": "mlflow_error"}
+            )
+        return False
+
+
+def safe_log_params(
+    params: Dict[str, Any],
+    logger: Optional[logging.Logger] = None
+) -> bool:
+    """Log parameters to MLflow with error handling.
+
+    Attempts to log parameters to MLflow. If MLflow fails, logs a warning but
+    continues execution.
+
+    Args:
+        params: Dictionary of parameter names and values
+        logger: Optional logger for warnings
+
+    Returns:
+        True if logging succeeded, False if it failed
+
+    Example:
+        >>> success = safe_log_params({"n_splits": 5}, logger=logger)
+    """
+    try:
+        for k, v in params.items():
+            try:
+                mlflow.log_param(k, v)
+            except Exception:
+                mlflow.log_param(k, str(v))
+        return True
+    except mlflow.exceptions.MlflowException as e:
+        if logger:
+            logger.warning(
+                f"MLflow params logging failed: {e}",
+                extra={"category": "mlflow_error"}
+            )
+        return False
+    except Exception as e:
+        if logger:
+            logger.error(
+                f"Unexpected error in MLflow params logging: {e}",
+                extra={"category": "mlflow_error"}
+            )
+        return False
+
+
+def safe_log_artifact(
+    path: str,
+    logger: Optional[logging.Logger] = None
+) -> bool:
+    """Log artifact to MLflow with error handling.
+
+    Attempts to log artifact to MLflow. If MLflow fails, logs a warning but
+    continues execution.
+
+    Args:
+        path: File path to log as artifact
+        logger: Optional logger for warnings
+
+    Returns:
+        True if logging succeeded, False if it failed
+
+    Example:
+        >>> success = safe_log_artifact("artifacts/model_summary.csv", logger=logger)
+    """
+    if not os.path.exists(path):
+        if logger:
+            logger.warning(f"Artifact not found, skipping: {path}")
+        return False
+
+    try:
+        mlflow.log_artifact(path)
+        return True
+    except mlflow.exceptions.MlflowException as e:
+        if logger:
+            logger.warning(
+                f"MLflow artifact logging failed for {path}: {e}",
+                extra={"category": "mlflow_error"}
+            )
+        return False
+    except Exception as e:
+        if logger:
+            logger.error(
+                f"Unexpected error in MLflow artifact logging for {path}: {e}",
+                extra={"category": "mlflow_error"}
+            )
+        return False

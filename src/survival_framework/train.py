@@ -5,7 +5,9 @@ import logging
 from joblib import Parallel, delayed
 import pandas as pd
 import numpy as np
-from typing import Optional
+from typing import Optional, List, Dict
+import filelock
+from pathlib import Path
 
 from survival_framework.data import (
     split_X_y,
@@ -38,7 +40,10 @@ from survival_framework.utils import (
     versioned_name,
     get_output_paths,
 )
-from survival_framework.tracking import start_run, log_params, log_metrics, log_artifact
+from survival_framework.tracking import (
+    start_run,
+    safe_log_params, safe_log_metrics, safe_log_artifact
+)
 from survival_framework.logging_config import log_performance, ProgressLogger, capture_warnings
 from survival_framework.timing import Timer
 
@@ -170,6 +175,68 @@ def _train_single_fold(
     return res
 
 
+def _save_model_metrics_incremental(
+    model_name: str,
+    fold_results: List[Dict],
+    artifacts_path: str,
+    logger: logging.Logger
+) -> None:
+    """Save metrics for a single model immediately after training.
+
+    Creates/appends to model_metrics.csv with file locking for parallel safety.
+    This enables recovery from pipeline failures without losing completed work.
+
+    Args:
+        model_name: Name of the model (e.g., "cox_ph", "gbsa")
+        fold_results: List of metric dictionaries from cross-validation folds
+        artifacts_path: Path to artifacts directory
+        logger: Logger instance for status messages
+
+    Example:
+        >>> fold_results = [
+        ...     {"model": "cox_ph", "fold": 0, "cindex": 0.742, "ibs": 0.152},
+        ...     {"model": "cox_ph", "fold": 1, "cindex": 0.738, "ibs": 0.148}
+        ... ]
+        >>> _save_model_metrics_incremental("cox_ph", fold_results, "artifacts", logger)
+        # Creates or appends to artifacts/model_metrics.csv
+    """
+    metrics_file = Path(artifacts_path) / "model_metrics.csv"
+    lock_file = Path(artifacts_path) / ".model_metrics.csv.lock"
+
+    # Convert fold results to DataFrame
+    df = pd.DataFrame(fold_results)
+
+    # Use file locking for parallel safety
+    lock = filelock.FileLock(lock_file, timeout=30)
+    try:
+        with lock:
+            if metrics_file.exists():
+                # Append to existing file
+                existing_df = pd.read_csv(metrics_file)
+                combined_df = pd.concat([existing_df, df], ignore_index=True)
+                combined_df.to_csv(metrics_file, index=False)
+                logger.info(f"✅ Appended {len(df)} rows to {metrics_file}")
+            else:
+                # Create new file with header
+                df.to_csv(metrics_file, index=False)
+                logger.info(f"✅ Created {metrics_file} with {len(df)} rows")
+
+        # Log performance summary
+        avg_cindex = df['cindex'].mean()
+        avg_ibs = df['ibs'].mean()
+        log_performance(
+            logger,
+            f"{model_name} metrics persisted",
+            avg_cindex=round(avg_cindex, 4),
+            avg_ibs=round(avg_ibs, 4),
+            n_folds=len(df)
+        )
+
+    except filelock.Timeout:
+        logger.error(f"❌ File lock timeout for {metrics_file}")
+        raise
+
+
 def train_all_models(
     file_path: str,
     run_type: RunType = "sample",
@@ -276,14 +343,14 @@ def train_all_models(
 
     with start_run(run_name=run_name):
         # Log run type and execution config
-        log_params({
+        safe_log_params({
             "run_type": run_type,
             "input_file": file_path,
             "n_samples": len(df),
             "execution_mode": execution_config.mode.value,
             "n_jobs": execution_config.n_jobs
-        })
-        log_artifact(ph_flags_path)
+        }, logger=logger)
+        safe_log_artifact(ph_flags_path, logger=logger)
 
         for name, model in models.items():
             model_logger = logging.getLogger(f"survival_framework.models.{name}")
@@ -326,7 +393,7 @@ def train_all_models(
                         # Collect results and log metrics
                         for fold_idx, res in enumerate(fold_results):
                             rows.append(res)
-                            log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
+                            safe_log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx, logger=model_logger)
                             log_performance(model_logger, f"Fold {fold_idx} completed",
                                           cindex=round(res["cindex"], 4),
                                           ibs=round(res["ibs"], 4))
@@ -347,7 +414,7 @@ def train_all_models(
                                     fold_dir=fold_dir
                                 )
                             rows.append(res)
-                            log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx)
+                            safe_log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx, logger=model_logger)
                             log_performance(model_logger, f"Fold {fold_idx} completed",
                                           cindex=round(res["cindex"], 4),
                                           ibs=round(res["ibs"], 4))
@@ -357,6 +424,14 @@ def train_all_models(
             avg_cindex = np.mean([r["cindex"] for r in model_results])
             avg_ibs = np.mean([r["ibs"] for r in model_results])
 
+            # Save metrics incrementally (resilience against pipeline failures)
+            _save_model_metrics_incremental(
+                model_name=name,
+                fold_results=model_results,
+                artifacts_path=paths["artifacts"],
+                logger=model_logger
+            )
+
             # Save fitted final model on full data
             model_logger.info("Fitting final model on complete dataset")
             with Timer(model_logger, f"{name} final fit"):
@@ -364,7 +439,7 @@ def train_all_models(
             model_filename = versioned_name(f"{name}.joblib", run_type=run_type)
             model_path = os.path.join(paths["models"], model_filename)
             joblib.dump(pipe, model_path)
-            log_artifact(model_path)
+            safe_log_artifact(model_path, logger=model_logger)
             model_logger.info(f"Model saved to: {model_path}")
 
             # Update progress

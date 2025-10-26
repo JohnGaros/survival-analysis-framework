@@ -10,6 +10,7 @@ Can be used as CLI or imported as a function.
 from survival_framework.train import train_all_models
 from survival_framework.predict import generate_predictions
 from survival_framework.data import RunType
+from survival_framework.recovery import attempt_recovery
 from survival_framework.config import (
     ExecutionConfig,
     ExecutionMode,
@@ -20,9 +21,11 @@ from survival_framework.config import (
 )
 from survival_framework.logging_config import setup_logging, log_performance
 from survival_framework.timing import Timer
+from survival_framework.utils import get_output_paths
 import os
 import argparse
 import logging
+from pathlib import Path
 from typing import Optional, Literal
 
 
@@ -134,6 +137,16 @@ def run_pipeline(
     logger.info(f"Execution:  {execution_config}")
     logger.info("=" * 70)
 
+    # Ensure logs directory exists for production runs
+    paths = get_output_paths(run_type)
+    log_dir = Path(paths["logs"])
+    if not log_dir.exists():
+        logger.warning(f"⚠️  Logs directory missing: {log_dir}")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"✅ Created logs directory: {log_dir}")
+    else:
+        logger.info(f"📁 Logs directory verified: {log_dir}")
+
     try:
         # Training phase
         if not predict_only:
@@ -165,7 +178,33 @@ def run_pipeline(
 
     except Exception as e:
         logger.error(f"Pipeline failed: {str(e)}", exc_info=True)
-        return 1
+
+        # Attempt automatic recovery
+        recovery_successful = attempt_recovery(
+            run_type=run_type,
+            input_file=input_file,
+            logger=logger,
+            original_error=e
+        )
+
+        if recovery_successful:
+            logger.warning("")
+            logger.warning("=" * 70)
+            logger.warning("⚠️  PARTIAL SUCCESS - RECOVERY COMPLETED")
+            logger.warning("=" * 70)
+            logger.warning("Pipeline failed partway through, but recovery generated predictions")
+            logger.warning("from available models. Check logs above for details.")
+            logger.warning("=" * 70)
+            return 0  # Success with warnings
+        else:
+            logger.error("")
+            logger.error("=" * 70)
+            logger.error("❌ RECOVERY FAILED")
+            logger.error("=" * 70)
+            logger.error("No usable models available for prediction generation.")
+            logger.error("Check logs above for details.")
+            logger.error("=" * 70)
+            return 1  # Total failure
 
 
 def main():

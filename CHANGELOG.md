@@ -8,10 +8,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Pipeline resilience improvements for production stability**
+  - Added `filelock>=3.12` dependency for parallel-safe CSV writes
+  - Incremental metrics persistence: CSV files written after each model completes training
+  - Model metrics now saved to `model_metrics.csv` as soon as each model finishes
+  - File locking ensures concurrent writes don't corrupt CSV files in multiprocessing mode
+  - Prevents total data loss if pipeline crashes mid-training (preserves completed models)
+
+- **Safe MLflow wrappers with graceful degradation**
+  - Created `safe_log_metrics()`, `safe_log_params()`, `safe_log_artifact()` in tracking.py
+  - MLflow failures log warnings but don't crash the pipeline
+  - CSV files remain primary source of truth for metrics
+  - Pipeline continues execution even if MLflow is unavailable or corrupted
+  - Warning categorization with `category="mlflow_error"` for easy filtering
+
+- **Production logging infrastructure**
+  - Automatic creation of logs directory before training starts
+  - Prevents missing logs in production runs (previously only sample runs had logs)
+  - Clear logging messages indicating directory status (missing, created, verified)
+  - Ensures all production runs have complete audit trail
+
+- **Automatic pipeline recovery system**
+  - Created `src/survival_framework/recovery.py` module (~400 lines)
+  - Integrated into main.py exception handler - activates automatically on pipeline failure
+  - Detects completed models from incremental metrics CSV
+  - Generates model_summary.csv from partial results
+  - Fits final models only for successfully completed models
+  - Generates predictions using best available model
+  - Comprehensive recovery notifications logged with full context
+  - Enables "partial success" outcome - exit code 0 if predictions generated
+  - Prevents wasted compute: 31-hour run can still produce usable predictions even if last model fails
+
 - Code reviewer subagent for automated code quality checks
   - CLAUDE.md now tracked in git (removed from .gitignore) for team-wide access
 
 ### Changed
+- **Replaced direct MLflow calls with safe wrappers throughout train.py**
+  - All `log_params()` → `safe_log_params(..., logger=logger)`
+  - All `log_metrics()` → `safe_log_metrics(..., logger=logger)`
+  - All `log_artifact()` → `safe_log_artifact(..., logger=logger)`
+  - Pipeline no longer crashes on MLflow errors
+  - Failures logged with context for debugging
+
+- **Enhanced train.py with incremental persistence**
+  - Created `_save_model_metrics_incremental()` helper function (60 lines)
+  - Metrics written to CSV immediately after each model completes
+  - Uses filelock for parallel-safe concurrent writes with 30-second timeout
+  - Logs performance summary (C-index, IBS) after each save
+  - Enables recovery from crashes without losing completed work
+
+- **Enhanced main.py for production robustness**
+  - Added logs directory verification before training phase
+  - Creates missing logs directory with proper permissions
+  - Provides clear status messages (⚠️ missing, ✅ created, 📁 verified)
+  - Ensures consistent logging infrastructure across sample and production runs
 - Enhanced pre-commit context check to recognize .claude/ directory changes as significant
   - Now detects `.claude/agents/*.md`, `.claude/skills/*.md`, `scripts/*.py`, `scripts/*.sh`, `.git/hooks/*`
   - Excludes `.claude/` files from "documentation-only" exemption
