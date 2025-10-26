@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **Random Survival Forest (RSF) model from training pipeline**
+  - Removed RSF from train.py build_models() function
+  - Removed RSF from recovery.py model lists and creation logic
+  - Removed RSF hyperparameters from config.py (rsf_n_estimators, rsf_max_depth, rsf_min_samples_split, rsf_min_samples_leaf, rsf_max_features)
+  - Updated documentation to reflect 4-model pipeline (Cox PH, Coxnet, Weibull AFT, GBSA)
+  - Reason: RSF did not win in sample run and takes excessive hours in production runs
+  - Note: RSFWrapper class remains in models.py for potential future use but is no longer imported or instantiated
+
 ### Added
 - **Pipeline resilience improvements for production stability**
   - Added `filelock>=3.12` dependency for parallel-safe CSV writes

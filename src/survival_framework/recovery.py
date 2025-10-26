@@ -124,7 +124,7 @@ def attempt_recovery(
     _send_recovery_notification(
         run_type=run_type,
         completed_models=completed_models,
-        total_models=5,  # cox_ph, coxnet, weibull_aft, gbsa, rsf
+        total_models=4,  # cox_ph, coxnet, weibull_aft, gbsa
         original_error=original_error,
         logger=logger
     )
@@ -310,7 +310,7 @@ def _create_model_wrapper(model_name: str, logger: logging.Logger):
     """Create model wrapper instance by name.
 
     Args:
-        model_name: Name of model (cox_ph, coxnet, weibull_aft, gbsa, rsf)
+        model_name: Name of model (cox_ph, coxnet, weibull_aft, gbsa)
         logger: Logger instance
 
     Returns:
@@ -321,7 +321,7 @@ def _create_model_wrapper(model_name: str, logger: logging.Logger):
     """
     from survival_framework.models import (
         CoxPHWrapper, CoxnetWrapper, WeibullAFTWrapper,
-        GBSAWrapper, RSFWrapper
+        GBSAWrapper
     )
 
     # Get default hyperparameters
@@ -344,14 +344,6 @@ def _create_model_wrapper(model_name: str, logger: logging.Logger):
             max_depth=config.gbsa_max_depth,
             subsample=config.gbsa_subsample,
             min_samples_split=config.gbsa_min_samples_split
-        )
-    elif model_name == "rsf":
-        return RSFWrapper(
-            n_estimators=config.rsf_n_estimators,
-            max_depth=config.rsf_max_depth,
-            min_samples_split=config.rsf_min_samples_split,
-            min_samples_leaf=config.rsf_min_samples_leaf,
-            max_features=config.rsf_max_features
         )
     else:
         raise ValueError(f"Unknown model name: {model_name}")
@@ -426,7 +418,7 @@ def _send_recovery_notification(
         logger: Logger instance
     """
     failed_count = total_models - len(completed_models)
-    all_models = ["cox_ph", "coxnet", "weibull_aft", "gbsa", "rsf"]
+    all_models = ["cox_ph", "coxnet", "weibull_aft", "gbsa"]
     failed_models = [m for m in all_models if m not in completed_models]
 
     logger.warning("")

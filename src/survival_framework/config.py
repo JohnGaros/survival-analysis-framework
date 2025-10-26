@@ -253,11 +253,6 @@ class ModelHyperparameters:
         gbsa_max_depth: Maximum depth of individual trees in GBSA
         gbsa_subsample: Fraction of samples used for each tree in GBSA
         gbsa_min_samples_split: Minimum samples required to split a node in GBSA
-        rsf_n_estimators: Number of trees in Random Survival Forest
-        rsf_max_depth: Maximum depth of trees in RSF (None = unlimited)
-        rsf_min_samples_split: Minimum samples required to split a node in RSF
-        rsf_min_samples_leaf: Minimum samples required in leaf node for RSF
-        rsf_max_features: Number of features to consider per split in RSF
     """
     # Cox PH models
     cox_max_iter: int = 10_000
@@ -321,49 +316,6 @@ class ModelHyperparameters:
     - Large data: 100+ (prevents overfitting, speeds up training)
     """
 
-    # Random Survival Forest
-    rsf_n_estimators: int = 300
-    """Number of trees in Random Survival Forest.
-
-    Valid range: [10, 1000]
-    - Sample data: 300 (high accuracy)
-    - Production data: 100 (faster, still robust)
-
-    Note: RSF benefits from more trees, but runtime is O(n_estimators).
-    """
-
-    rsf_max_depth: Optional[int] = None
-    """Maximum depth of trees in RSF. None = unlimited.
-
-    Valid range: [1, 50] or None
-    - None: Grow until leaves are pure (default, can be slow)
-    - 10: Good balance for large datasets
-    """
-
-    rsf_min_samples_split: int = 10
-    """Minimum samples required to split a node in RSF.
-
-    Valid range: [2, 1000]
-    - Small data: 10 (default)
-    - Large data: 100+ (prevents overfitting, speeds up training)
-    """
-
-    rsf_min_samples_leaf: int = 5
-    """Minimum samples required in leaf node for RSF.
-
-    Valid range: [1, 500]
-    - Smaller values = more complex trees, longer training
-    - Larger values = simpler trees, faster training
-    """
-
-    rsf_max_features: Optional[int] = None
-    """Number of features to consider per split in RSF. None = sqrt(n_features).
-
-    Valid range: [1, n_features] or None
-    - None: Use sqrt(n_features) (default, good for most cases)
-    - 5: Fixed number (useful when n_features is large)
-    """
-
     @classmethod
     def for_environment(cls, run_type: str) -> "ModelHyperparameters":
         """Create hyperparameters optimized for specific environment.
@@ -386,20 +338,13 @@ class ModelHyperparameters:
                 gbsa_learning_rate=0.2,
                 gbsa_max_depth=2,
                 gbsa_subsample=0.5,
-                gbsa_min_samples_split=100,
-                # Faster RSF for large data
-                rsf_n_estimators=100,
-                rsf_max_depth=10,
-                rsf_min_samples_split=100,
-                rsf_min_samples_leaf=50,
-                rsf_max_features=5
+                gbsa_min_samples_split=100
             )
         elif run_type == "experiment":
             return cls(
                 # More thorough for experiments
                 gbsa_n_estimators=200,
-                gbsa_learning_rate=0.05,
-                rsf_n_estimators=500
+                gbsa_learning_rate=0.05
             )
         else:  # sample or default
             return cls()  # Use defaults

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a survival analysis framework for modeling customer churn/termination using multiple survival models. The framework trains and evaluates Cox proportional hazards models, Weibull AFT, Random Survival Forest, and Gradient Boosting survival models on financial customer data.
+This is a survival analysis framework for modeling customer churn/termination using multiple survival models. The framework trains and evaluates Cox proportional hazards models, Weibull AFT, and Gradient Boosting survival models on financial customer data.
 
 **For theoretical foundations and implementation details, see [`METHODOLOGY.md`](METHODOLOGY.md).**
 
@@ -69,7 +69,7 @@ This is a survival analysis framework for modeling customer churn/termination us
   - `AnalysisConfig` - Cross-validation settings
   - `SurvivalFrameworkConfig` - Master config with JSON save/load
 - **Added**: `src/configs/sample.json` and `src/configs/production.json`
-- **Changed**: Production config optimizes GBSA (50 estimators) and RSF (100 estimators)
+- **Changed**: Production config optimizes GBSA (50 estimators)
 - **Removed**: 161 legacy files from git tracking (artifacts/, models/, mlruns/ at repo root)
 - **Added**: `PHASE1_BENCHMARK.md` to .gitignore (development file)
 - **Impact**:
@@ -305,7 +305,7 @@ The codebase follows a modular architecture under `src/survival_framework/`:
 - **models.py**: Survival model wrappers with unified interface
 
   - All models inherit from `BaseSurvivalModel` with methods: `fit()`, `predict_survival_function()`, `score()`
-  - Implements wrappers for: CoxPH, Coxnet (elastic net regularized Cox), Stratified Cox, Weibull AFT, GBSA, RSF
+  - Implements wrappers for: CoxPH, Coxnet (elastic net regularized Cox), Stratified Cox, Weibull AFT, GBSA
   - `StratifiedCoxWrapper` uses lifelines and requires original categorical columns in the DataFrame (not transformed)
   - `DeepSurvWrapper` is a placeholder for future torch/pycox integration
 
@@ -369,7 +369,7 @@ All training runs are tracked in `src/mlruns/` under the experiment "survival_fr
 
 - **StratifiedCoxWrapper** expects raw DataFrames with categorical columns intact (not one-hot encoded). This is handled by passing the original X DataFrame rather than the transformed array.
 - **Lifelines models** (StratifiedCoxWrapper, WeibullAFTWrapper) require DataFrames with 'time' and 'event' columns appended.
-- **scikit-survival models** (CoxPH, Coxnet, GBSA, RSF) work with numpy arrays and structured y.
+- **scikit-survival models** (CoxPH, Coxnet, GBSA) work with numpy arrays and structured y.
 - Risk scores convention: higher risk score = higher hazard = lower survival probability.
 - The framework uses event-balanced stratified K-fold to ensure both censored and event samples are proportionally distributed across folds.
 

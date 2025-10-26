@@ -25,7 +25,6 @@ from survival_framework.models import (
     StratifiedCoxWrapper,
     WeibullAFTWrapper,
     GBSAWrapper,
-    RSFWrapper,
 )
 from survival_framework.validation import (
     CVConfig,
@@ -83,7 +82,7 @@ def build_models(hyperparameters=None):
         >>> # Using defaults
         >>> models = build_models()
         >>> print(list(models.keys()))
-        ['cox_ph', 'coxnet', 'weibull_aft', 'gbsa', 'rsf']
+        ['cox_ph', 'coxnet', 'weibull_aft', 'gbsa']
 
         >>> # Using custom hyperparameters
         >>> from survival_framework.config import ModelHyperparameters
@@ -120,13 +119,6 @@ def build_models(hyperparameters=None):
             max_depth=hyperparameters.gbsa_max_depth,
             subsample=hyperparameters.gbsa_subsample,
             min_samples_split=hyperparameters.gbsa_min_samples_split
-        ),
-        "rsf": RSFWrapper(
-            n_estimators=hyperparameters.rsf_n_estimators,
-            max_depth=hyperparameters.rsf_max_depth,
-            min_samples_split=hyperparameters.rsf_min_samples_split,
-            min_samples_leaf=hyperparameters.rsf_min_samples_leaf,
-            max_features=hyperparameters.rsf_max_features
         ),
     }
 
