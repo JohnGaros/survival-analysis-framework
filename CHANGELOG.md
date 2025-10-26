@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Code reviewer subagent for automated code quality checks
+  - Created `.claude/agents/code-reviewer.md` - specialized AI agent for code review
+  - Automatically invoked after code changes to ensure quality and correctness
+  - Survival analysis expertise (structured arrays, risk scores, IPCW, time grids)
+  - Checks Python best practices, security, testing, documentation
+  - Enforces project standards (config usage, MLflow tracking, context updates)
+  - Provides prioritized feedback (Critical/Warnings/Suggestions)
+  - Created `.claude/agents/README.md` with agent documentation
+
+- Automated post-commit hook for GitHub synchronization
+  - Created `.git/hooks/post-commit` to automatically push commits to GitHub
+  - Detects current branch and remote tracking automatically
+  - Graceful error handling with helpful messages
+  - 60-second timeout to prevent hanging
+  - Logs failures to `.git/hooks-logs/post-commit-failures.log`
+  - Never blocks commits even if push fails
+
 - Automated pre-commit hook for context file verification
   - Created `scripts/pre_commit_context_check.py` (258 lines) to enforce CHANGELOG.md and CLAUDE.md updates
   - Detects significant changes (src/*.py, requirements.txt, etc.) and verifies context files are updated
