@@ -168,6 +168,42 @@ Guide for maintaining CHANGELOG.md with human-readable change history.
 
 ---
 
+### archive-management
+
+Automatically identify and archive completed task artifacts to keep the codebase clean.
+
+**Usage:**
+```
+/skill archive-management
+```
+or user requests: "clean up old planning docs", "archive completed tasks"
+
+**What it does:**
+- Scans for old assessment files (>30 days), planning docs (>7 days), one-off scripts
+- Presents candidates for review with age, size, and archival reason
+- Archives to `.claude/archive/` organized by type and month
+- Uses `git mv` to preserve file history
+- Creates archive README documenting what was archived and why
+- Commits changes with descriptive message
+
+**Safety features:**
+- 7-day safety buffer (never archives recent files)
+- Confirmation required before moving files
+- Dry run mode available
+- Easy rollback with git
+
+**Use when:**
+- Noticing >5 old assessment files
+- After major milestone completion
+- Periodic maintenance (monthly)
+- Before releases
+
+**Proactive**: Claude will suggest running this when detecting accumulated old files
+
+**Focus**: Codebase cleanliness while preserving historical context
+
+---
+
 ## Skill vs Agent
 
 **Skills** are preferred over agents because they:

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Archive management skill for codebase cleanliness**
+  - Created `.claude/skills/archive-management.md` - automatic archival of completed task artifacts
+  - Scans for old assessment files (>30 days), planning docs (>7 days), one-off scripts
+  - Archives to `.claude/archive/` organized by type and year-month
+  - Uses `git mv` to preserve file history, creates README documenting contents
+  - Safety features: 7-day buffer, confirmation required, dry run mode, easy rollback
+  - Proactive suggestions when detecting >5 old files
+  - Keeps codebase clean while preserving historical context
+
 ### Removed
 - **Random Survival Forest (RSF) model from training pipeline**
   - Removed RSF from train.py build_models() function
