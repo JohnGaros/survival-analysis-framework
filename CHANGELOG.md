@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Stratum-level aggregate statistics for predictions**
+  - Created `src/survival_framework/strata_analysis.py` module for computing aggregate statistics by categorical strata
+  - New functions: `create_stratum_identifier()`, `compute_strata_summary()`, `compute_strata_predictions()`, `compute_strata_metrics()`, `save_strata_artifacts()`, `aggregate_strata_predictions()`
+  - Extended `validation.py::evaluate_model()` to compute and save per-fold stratum predictions
+    - Added parameters: `X_full`, `y_full`, `train_indices`, `test_indices`, `strata_cols`
+    - Automatically saves `{model}_fold{i}_strata.csv` files with aggregated predictions by stratum
+    - Returns extended result dict with indices, risk scores, and times for downstream analysis
+  - Integrated into `train.py::train_all_models()` pipeline
+    - Computes and saves `strata_summary.csv` with baseline statistics before training
+    - Passes strata columns to all fold evaluations for automatic aggregation
+    - Modified `_train_single_fold()` to accept `strata_cols` parameter
+  - Added `tests/test_strata_analysis.py` with comprehensive unit tests (9 test cases)
+  - New output artifacts:
+    - `artifacts/strata_summary.csv` - Baseline statistics by stratum (counts, event rates, survival times)
+    - `artifacts/{model}/{model}_fold{i}_strata.csv` - Per-fold predictions aggregated by stratum
+  - Strata defined by `CAT_COLS` (typeoftariff_coarse, risk_level_coarse)
+  - Composite stratum identifiers use pipe separator format: "tariff_A|risk_low"
+  - Enables identification of model performance heterogeneity across customer segments
+  - Supports targeted interventions, stratified reporting, and bias detection
+
 - **Archive management skill for codebase cleanliness**
   - Created `.claude/skills/archive-management.md` - automatic archival of completed task artifacts
   - Scans for old assessment files (>30 days), planning docs (>7 days), one-off scripts

@@ -102,12 +102,18 @@ def evaluate_model(
     times: np.ndarray,
     outdir: str,
     fold_idx: int,
+    X_full: pd.DataFrame = None,
+    y_full: np.ndarray = None,
+    train_indices: np.ndarray = None,
+    test_indices: np.ndarray = None,
+    strata_cols: List[str] = None,
 ) -> Dict[str, Any]:
     """Evaluate survival model on single cross-validation fold.
 
     Fits the model pipeline on training data, generates predictions on test data,
     computes survival metrics (C-index, IBS, time-dependent AUC), and saves
-    fold-specific predictions to disk for later analysis.
+    fold-specific predictions to disk for later analysis. Optionally computes
+    and saves stratum-level aggregate statistics.
 
     Args:
         model_name: Identifier for the model being evaluated
@@ -120,6 +126,11 @@ def evaluate_model(
                to test set's observed time range to prevent extrapolation errors.
         outdir: Directory path to save fold predictions
         fold_idx: Index of current fold (0-indexed)
+        X_full: Full feature DataFrame with categorical strata columns (optional)
+        y_full: Full structured survival array (optional)
+        train_indices: Indices for training samples in full dataset (optional)
+        test_indices: Indices for test samples in full dataset (optional)
+        strata_cols: List of categorical column names for stratum analysis (optional)
 
     Returns:
         Dictionary containing:
@@ -128,17 +139,24 @@ def evaluate_model(
         - cindex: Concordance index score
         - ibs: Integrated Brier score
         - mean_auc: Mean time-dependent AUC across time points
+        - train_indices: Training indices (if provided)
+        - test_indices: Test indices (if provided)
+        - risk_scores: Risk scores array (for downstream analysis)
+        - times: Time grid used for evaluation
 
     Example:
         >>> results = evaluate_model(
         ...     "cox_ph", pipeline, X_train, y_train, X_test, y_test,
-        ...     times=np.array([6, 12, 18, 24]), outdir="artifacts/cox_ph", fold_idx=0
+        ...     times=np.array([6, 12, 18, 24]), outdir="artifacts/cox_ph", fold_idx=0,
+        ...     X_full=X, y_full=y, test_indices=test_idx,
+        ...     strata_cols=['typeoftariff_coarse', 'risk_level_coarse']
         ... )
         >>> print(f"Fold 0 C-index: {results['cindex']:.3f}")
 
     Notes:
         - Time points are automatically constrained to test set's observed range
         - This prevents "all times must be within follow-up time" errors in IBS/AUC
+        - If strata_cols provided, saves per-fold stratum predictions to CSV
     """
     os.makedirs(outdir, exist_ok=True)
 
@@ -192,10 +210,39 @@ def evaluate_model(
     np.save(os.path.join(outdir, f"{model_name}_fold{fold_idx}_surv.npy"), surv_pred)
     np.save(os.path.join(outdir, f"{model_name}_fold{fold_idx}_risk.npy"), risk_scores)
 
-    return {
+    # Compute and save stratum-level predictions if requested
+    if strata_cols is not None and X_full is not None and test_indices is not None:
+        from survival_framework.strata_analysis import compute_strata_predictions
+
+        strata_preds = compute_strata_predictions(
+            X=X_full,
+            y_struct=y_full,
+            strata_cols=strata_cols,
+            test_indices=test_indices,
+            risk_scores=risk_scores,
+            surv_probs=surv_pred,
+            times=times_safe,
+            model_name=model_name,
+            fold_idx=fold_idx
+        )
+        strata_path = os.path.join(outdir, f"{model_name}_fold{fold_idx}_strata.csv")
+        strata_preds.to_csv(strata_path, index=False)
+
+    # Return extended result with indices for downstream stratum analysis
+    result = {
         "model": model_name,
         "fold": fold_idx,
         "cindex": cindex,
         "ibs": ibs,
         "mean_auc": float(np.mean(aucs)),
     }
+
+    # Add optional fields for stratum metrics computation
+    if train_indices is not None:
+        result["train_indices"] = train_indices
+    if test_indices is not None:
+        result["test_indices"] = test_indices
+    result["risk_scores"] = risk_scores
+    result["times"] = times_safe
+
+    return result

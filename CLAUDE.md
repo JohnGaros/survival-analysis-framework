@@ -10,6 +10,34 @@ This is a survival analysis framework for modeling customer churn/termination us
 
 ## Recent Updates
 
+**[2025-10-26]**: Stratum-level aggregate statistics for predictions
+- **Added**: `strata_analysis.py` module for computing aggregate statistics by categorical strata
+  - `create_stratum_identifier()` - Create composite stratum labels from categorical columns
+  - `compute_strata_summary()` - Descriptive statistics (counts, event rates, survival times) by stratum
+  - `compute_strata_predictions()` - Aggregate predictions (risk scores, survival probabilities) by stratum per fold
+  - `compute_strata_metrics()` - Performance metrics (C-index, IBS, AUC) by stratum across folds
+  - `save_strata_artifacts()` - Save stratum summaries to CSV
+  - `aggregate_strata_predictions()` - Combine per-fold strata predictions into summary
+- **Changed**: `validation.py::evaluate_model()` extended to compute and save per-fold stratum predictions
+  - Now accepts `X_full`, `y_full`, `train_indices`, `test_indices`, `strata_cols` parameters
+  - Automatically saves `{model}_fold{i}_strata.csv` files with aggregated predictions by stratum
+  - Returns extended result dict with indices, risk scores, and times for downstream analysis
+- **Changed**: `train.py::train_all_models()` integrated stratum analysis into pipeline
+  - Computes and saves `strata_summary.csv` with baseline statistics before training
+  - Passes strata columns to all fold evaluations for automatic aggregation
+  - Modified `_train_single_fold()` to accept `strata_cols` parameter
+- **Added**: `tests/test_strata_analysis.py` with comprehensive unit tests
+- **Impact**: Enables identification of model performance heterogeneity across customer segments
+  - Artifacts include: `strata_summary.csv`, `{model}/model_fold{i}_strata.csv`
+  - Supports targeted interventions and segment-specific risk analysis
+  - Facilitates stratified reporting and bias detection
+- **New patterns**:
+  - Strata defined by `CAT_COLS` (typeoftariff_coarse, risk_level_coarse)
+  - Composite stratum identifiers use pipe separator: "tariff_A|risk_low"
+  - Per-fold predictions aggregated by stratum with mean/std statistics
+  - All stratum artifacts saved alongside existing model outputs
+- **Files**: See `src/survival_framework/strata_analysis.py` and updated `validation.py`, `train.py`
+
 **[2025-10-26]**: Automated code review and quality infrastructure
 - **Added**: Code-reviewer subagent (`.claude/agents/code-reviewer.md`) for automated code quality checks
   - Specialized in survival analysis (structured arrays, risk scores, IPCW, time grids)
@@ -236,6 +264,14 @@ survival_framework/
 │       ├── sample/                 # Sample run outputs
 │       │   ├── models/             # Trained models
 │       │   ├── artifacts/          # Predictions and metrics
+│       │   │   ├── strata_summary.csv          # Baseline statistics by stratum
+│       │   │   ├── ph_flags.csv                # Proportional hazards test results
+│       │   │   ├── model_metrics.csv           # Per-fold metrics
+│       │   │   ├── model_summary.csv           # Aggregated model rankings
+│       │   │   └── <model>/                    # Per-model directories
+│       │   │       ├── <model>_fold{i}_surv.npy       # Survival predictions
+│       │   │       ├── <model>_fold{i}_risk.npy       # Risk scores
+│       │   │       └── <model>_fold{i}_strata.csv     # Stratum-aggregated predictions
 │       │   ├── mlruns/             # MLflow tracking
 │       │   └── logs/               # Execution logs
 │       ├── production/             # Production run outputs
@@ -312,8 +348,17 @@ The codebase follows a modular architecture under `src/survival_framework/`:
 - **validation.py**: Cross-validation and model evaluation
 
   - `event_balanced_splitter()`: Creates stratified K-fold splits balanced on event indicator
-  - `evaluate_model()`: Fits model, computes metrics (C-index, IBS, time-dependent AUC), saves fold predictions
+  - `evaluate_model()`: Fits model, computes metrics (C-index, IBS, time-dependent AUC), saves fold predictions and stratum aggregates
   - `ph_assumption_flags()`: Runs Schoenfeld tests to check proportional hazards assumptions
+
+- **strata_analysis.py**: Stratum-level aggregate statistics
+
+  - `create_stratum_identifier()`: Combines categorical columns into composite stratum labels
+  - `compute_strata_summary()`: Descriptive statistics (counts, event rates, survival times) by stratum
+  - `compute_strata_predictions()`: Aggregates predictions (risk scores, survival probabilities) by stratum per fold
+  - `compute_strata_metrics()`: Performance metrics (C-index, IBS, AUC) by stratum across folds
+  - `save_strata_artifacts()`: Saves stratum summaries to CSV
+  - `aggregate_strata_predictions()`: Combines per-fold strata predictions into summary
 
 - **metrics.py**: Survival-specific metrics
 
@@ -354,9 +399,11 @@ Input CSV must contain:
 
 ### Output Artifacts
 
+- `artifacts/strata_summary.csv`: Baseline statistics by stratum (n_samples, event_rate, mean survival time)
 - `artifacts/ph_flags.csv`: Proportional hazards test results per covariate
-- `artifacts/<model>/<model>_fold{i}_surv.npy`: Survival function predictions per fold
-- `artifacts/<model>/<model>_fold{i}_risk.npy`: Risk scores per fold
+- `artifacts/<model>/<model>_fold{i}_surv.npy`: Survival function predictions per fold (n_samples × n_times)
+- `artifacts/<model>/<model>_fold{i}_risk.npy`: Risk scores per fold (n_samples,)
+- `artifacts/<model>/<model>_fold{i}_strata.csv`: Stratum-aggregated predictions per fold (mean risk, mean survival probabilities by time)
 - `artifacts/model_metrics.csv`: Per-fold metrics for all models
 - `artifacts/model_summary.csv`: Average metrics and rankings across folds
 - `models/<model>_YYYYMMDD_HHMMSS.joblib`: Versioned fitted pipelines

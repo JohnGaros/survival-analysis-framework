@@ -45,6 +45,7 @@ from survival_framework.tracking import (
 )
 from survival_framework.logging_config import log_performance, ProgressLogger, capture_warnings
 from survival_framework.timing import Timer
+from survival_framework.strata_analysis import save_strata_artifacts
 
 
 def _load_data_legacy(csv_path: str) -> pd.DataFrame:
@@ -132,7 +133,8 @@ def _train_single_fold(
     train_idx: np.ndarray,
     test_idx: np.ndarray,
     times: np.ndarray,
-    fold_dir: str
+    fold_dir: str,
+    strata_cols: List[str] = None
 ) -> dict:
     """Train and evaluate a single fold (helper for parallel execution).
 
@@ -146,6 +148,7 @@ def _train_single_fold(
         test_idx: Indices for test set
         times: Time grid for evaluation
         fold_dir: Directory to save fold predictions
+        strata_cols: List of categorical column names for stratum analysis (optional)
 
     Returns:
         Dictionary with evaluation metrics (cindex, ibs, auc_mean, etc.)
@@ -163,6 +166,11 @@ def _train_single_fold(
         times=times,
         outdir=fold_dir,
         fold_idx=fold_idx,
+        X_full=X,
+        y_full=y,
+        train_indices=train_idx,
+        test_indices=test_idx,
+        strata_cols=strata_cols,
     )
     return res
 
@@ -313,6 +321,12 @@ def train_all_models(
         ph_flags.to_csv(ph_flags_path)
     logger.info(f"PH flags saved to: {ph_flags_path}")
 
+    # Compute and save stratum-level summary statistics
+    logger.info("Computing stratum-level summary statistics")
+    with Timer(logger, "Stratum summary"):
+        strata_artifacts = save_strata_artifacts(X, y, strata_cols=CAT_COLS, artifacts_path=paths["artifacts"])
+        logger.info(f"Stratum summary saved to: {strata_artifacts['strata_summary']}")
+
     times = default_time_grid(y)
 
     # Detect which numeric columns are present in this dataset
@@ -377,7 +391,8 @@ def train_all_models(
                                 train_idx=tr,
                                 test_idx=te,
                                 times=times,
-                                fold_dir=fold_dir
+                                fold_dir=fold_dir,
+                                strata_cols=CAT_COLS
                             )
                             for fold_idx, (tr, te) in enumerate(splits_list)
                         )
@@ -403,7 +418,8 @@ def train_all_models(
                                     train_idx=tr,
                                     test_idx=te,
                                     times=times,
-                                    fold_dir=fold_dir
+                                    fold_dir=fold_dir,
+                                    strata_cols=CAT_COLS
                                 )
                             rows.append(res)
                             safe_log_metrics({f"{name}_cindex": res["cindex"], f"{name}_ibs": res["ibs"]}, step=fold_idx, logger=model_logger)
